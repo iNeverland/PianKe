@@ -11,6 +11,7 @@ files:
   - "!dist/*.yml"
   - dist-electron/**/*
   - package.json
+  - "!src/**"
 extraResources:
   - from: logo/PianKe.svg
     to: PianKe.svg
