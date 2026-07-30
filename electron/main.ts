@@ -6,6 +6,7 @@ import { registerScreenshotHandlers, unregisterScreenshotShortcut } from './modu
 import { registerWindowHandlers } from './modules/window/handler.js';
 import { createMainWindow } from './windows/mainWindow.js';
 import { createSplashWindow } from './windows/splashWindow.js';
+import { checkForUpdates, startAutoUpdater } from './modules/updater/service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -78,6 +79,11 @@ app.whenReady().then(() => {
   registerScreenshotHandlers(__dirname, () => mainWindow);
 
   createWindow();
+  startAutoUpdater();
+  mainWindow?.webContents.once('did-finish-load', () => {
+    // 首屏加载完成后只检查一次；后续检查由下次启动或用户手动触发。
+    setTimeout(() => { void checkForUpdates('automatic'); }, 10_000);
+  });
 
   const openLibraryPath = process.argv.find(a => a.endsWith('.pianke'));
   if (openLibraryPath && mainWindow) {

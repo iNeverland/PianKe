@@ -63,6 +63,17 @@ const electronAPI = {
     },
   },
 
+  updater: {
+    getState: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_GET_STATE),
+    check: (source) => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK, source),
+    download: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+    onStateChange: (callback) => {
+      const handler = (_event, state) => callback(state);
+      ipcRenderer.on('update:stateChanged', handler);
+      return () => ipcRenderer.removeListener('update:stateChanged', handler);
+    },
+  },
+
   // 截图快捷键：主进程 → 渲染进程事件
   onScreenshotTrigger: (callback) => {
     const handler = () => callback();
@@ -73,6 +84,7 @@ const electronAPI = {
 
   // 注册快捷键到主进程
   registerShortcut: (accelerator) => ipcRenderer.invoke('shortcut:register', accelerator),
+  unregisterShortcut: () => ipcRenderer.invoke('shortcut:unregister'),
   showScreenToast: (message, duration) => ipcRenderer.invoke('screen-toast:show', message, duration),
 
   // 获取桌面捕获源（用于屏幕截图）

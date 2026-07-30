@@ -3,6 +3,7 @@ import type {
   StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre,
   StatsByRating, StatsByCountry, StatsMonthlyTrend, MonthSummary,
   DiaryTimelineMonth, DiaryCalendarEntry, ScreenshotInfo,
+  AppUpdateState, UpdateCheckSource,
 } from '@shared/types/index';
 
 export interface ElectronAPI {
@@ -16,8 +17,15 @@ export interface ElectronAPI {
     isMaximized: () => Promise<boolean>;
     onMaximizeChange: (callback: (isMaximized: boolean) => void) => void;
   };
+  updater: {
+    getState: () => Promise<AppUpdateState>;
+    check: (source?: UpdateCheckSource) => Promise<AppUpdateState>;
+    download: () => Promise<boolean>;
+    onStateChange: (callback: (state: AppUpdateState) => void) => () => void;
+  };
   onScreenshotTrigger: (callback: () => void) => () => void;
   registerShortcut: (accelerator: string) => Promise<boolean>;
+  unregisterShortcut: () => Promise<void>;
   showScreenToast: (message: string, duration?: number) => Promise<void>;
   getDesktopSources: () => Promise<{ id: string; name: string; thumb: string }[]>;
   getPrimaryScreenSnapshot: () => Promise<string | null>;

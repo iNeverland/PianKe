@@ -1,6 +1,6 @@
 {
   "name": "pianke",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "module",
   "description": "Personal cinema journal - desktop app",
   "main": "dist-electron/main.js",
@@ -11,9 +11,12 @@
     "electron:dev": "vite",
     "electron:build": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" && vite build && electron-builder",
     "electron:build:win": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" 2>nul & vite build && electron-builder --win nsis",
-    "electron:build:win:signed": "vite build && electron-builder --win nsis --config build/win-signed.yml"
+    "electron:build:win:signed": "vite build && electron-builder --win nsis --config build/win-signed.yml",
+    "electron:publish": "npm run build && electron-builder --publish always",
+    "electron:publish:win": "npm run build && electron-builder --win nsis --publish always"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "sharp": "^0.35.1"
   },
   "devDependencies": {

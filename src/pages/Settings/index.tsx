@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { getLocalDateStr } from '@shared/utils/date';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
-import { getShortcutConfig, saveShortcutConfig, toDisplayText, toAccelerator, getDefaultConfig, type ShortcutConfig } from '@/hooks/useScreenshotShortcut';
+import { getShortcutConfig, getShortcutKey, saveShortcutConfig, toDisplayText, toAccelerator, getDefaultConfig, type ShortcutConfig } from '@/hooks/useScreenshotShortcut';
 
 function getStoredTheme(): 'system' | 'dark' | 'light' {
   const stored = localStorage.getItem('film-log-theme');
@@ -15,17 +15,29 @@ export default function Settings() {
   const [screenshotShortcut, setScreenshotShortcut] = useState<ShortcutConfig>(getShortcutConfig);
   const [capturing, setCapturing] = useState(false);
   const [libPath, setLibPath] = useState<string>('');
+  const [appVersion, setAppVersion] = useState(__APP_VERSION__);
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousShortcutRef = useRef<ShortcutConfig | null>(null);
 
   useEffect(() => {
     api.library.getPath().then((p) => setLibPath(p || '')).catch(() => {});
+    api.updater.getState().then((state) => setAppVersion(state.currentVersion)).catch(() => {});
   }, []);
 
   // 按键捕获模式：监听下一次有效按键组合
   useEffect(() => {
     if (!capturing) return;
+
+    const restorePreviousShortcut = () => {
+      const previous = previousShortcutRef.current;
+      previousShortcutRef.current = null;
+      if (previous && window.electronAPI?.registerShortcut) {
+        void window.electronAPI.registerShortcut(toAccelerator(previous));
+      }
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
@@ -33,6 +45,7 @@ export default function Settings() {
 
       // ESC 退出捕获模式
       if (e.key === 'Escape') {
+        restorePreviousShortcut();
         setCapturing(false);
         return;
       }
@@ -40,8 +53,9 @@ export default function Settings() {
       // 忽略纯修饰键
       if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
 
-      // 只接受单个字母或数字键
-      if (e.key.length !== 1) return;
+      // 使用物理键位，macOS 的 Option 不会将字母转换为特殊字符。
+      const key = getShortcutKey(e);
+      if (!key) return;
 
       // 至少需要一个修饰键
       if (!e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
@@ -54,7 +68,7 @@ export default function Settings() {
         shift: e.shiftKey,
         alt: e.altKey,
         meta: e.metaKey,
-        key: e.key.toLowerCase(),
+        key,
       };
 
       const accel = toAccelerator(newConfig);
@@ -65,25 +79,46 @@ export default function Settings() {
         return;
       }
 
-      // 注册到主进程
+      // 注册到主进程。旧快捷键已注销，防止本次按键直接触发截图。
       if (window.electronAPI?.registerShortcut) {
-        window.electronAPI.registerShortcut(accel).then((ok) => {
+        void window.electronAPI.registerShortcut(accel).then((ok) => {
           if (!ok) {
             showToast('快捷键注册失败，可能被系统占用，请更换');
+            restorePreviousShortcut();
           } else {
+            previousShortcutRef.current = null;
             saveShortcutConfig(newConfig);
             setScreenshotShortcut(newConfig);
             showToast('快捷键已更新');
           }
+          setCapturing(false);
         });
+      } else {
+        previousShortcutRef.current = null;
+        saveShortcutConfig(newConfig);
+        setScreenshotShortcut(newConfig);
+        setCapturing(false);
       }
-
-      setCapturing(false);
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+      restorePreviousShortcut();
+    };
   }, [capturing]);
+
+  async function beginShortcutCapture() {
+    if (capturing) return;
+    previousShortcutRef.current = screenshotShortcut;
+    try {
+      await window.electronAPI?.unregisterShortcut?.();
+      setCapturing(true);
+    } catch {
+      previousShortcutRef.current = null;
+      showToast('快捷键暂停失败，请重试');
+    }
+  }
 
   function applyTheme(mode: 'system' | 'dark' | 'light') {
     setTheme(mode);
@@ -185,6 +220,26 @@ export default function Settings() {
       showToast(`完整备份已创建（${result.movieCount} 部影视）`, 5000);
     } catch (err: any) {
       showToast(err.message || '完整备份失败');
+    }
+  }
+
+  async function handleCheckUpdate() {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+
+    try {
+      const result = await api.updater.check('manual');
+      if (result.status === 'not-available') {
+        showToast('当前已是最新版本');
+      } else if (result.status === 'disabled') {
+        showToast('开发环境不支持检查更新');
+      } else if (result.status === 'error') {
+        showToast(result.message || '检查更新失败，请稍后重试');
+      }
+    } catch {
+      showToast('检查更新失败，请稍后重试');
+    } finally {
+      setCheckingUpdate(false);
     }
   }
 
@@ -329,7 +384,7 @@ export default function Settings() {
                 </span>
                 <button
                   className="btn btn-secondary btn-sm"
-                  onClick={() => setCapturing(true)}
+                  onClick={() => { void beginShortcutCapture(); }}
                 >
                   修改
                 </button>
@@ -399,6 +454,17 @@ export default function Settings() {
           </div>
           <button className="btn btn-secondary btn-sm" onClick={handleExportCsv}>
             导出
+          </button>
+        </div>
+      </div>
+
+      {/* 版本号 */}
+      <div className="settings-section">
+        <div className="settings-section-title">版本号</div>
+        <div className="settings-row">
+          <div className="settings-row-label">v{appVersion}</div>
+          <button className="btn btn-secondary btn-sm" onClick={() => { void handleCheckUpdate(); }} disabled={checkingUpdate}>
+            {checkingUpdate ? '检查中…' : '检查更新'}
           </button>
         </div>
       </div>

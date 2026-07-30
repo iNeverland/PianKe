@@ -3,6 +3,7 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import AppShell from './components/layout/AppShell';
 import TitleBar from './components/layout/TitleBar';
 import Toast from './components/common/Toast';
+import UpdateDialog from './components/common/UpdateDialog';
 import { getShortcutConfig, toAccelerator } from './hooks/useScreenshotShortcut';
 import Welcome from './pages/Welcome';
 import type { LibraryInfo } from '@shared/types/index';
@@ -186,6 +187,7 @@ export default function App() {
       <>
         <TitleBar />
         <Welcome onLibraryOpen={handleLibraryOpen} />
+        <UpdateDialog />
         <Toast />
       </>
     );
@@ -207,6 +209,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
+      <UpdateDialog />
       <Toast />
     </HashRouter>
   );

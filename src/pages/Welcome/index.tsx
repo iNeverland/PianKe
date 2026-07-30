@@ -140,7 +140,7 @@ export default function Welcome({ onLibraryOpen }: WelcomeProps) {
 
       {/* 底部信息 */}
       <div className="welcome-footer">
-        <span>V1.1.0</span>
+        <span>v{__APP_VERSION__}</span>
         <span>数据完全属于你</span>
         <span>离线可用</span>
       </div>

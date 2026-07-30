@@ -36,6 +36,7 @@ export function unregisterScreenshotShortcut(): void {
 
 export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainWindowGetter): void {
   ipcMain.handle('shortcut:register', (_event, accelerator: string) => registerScreenshotShortcut(accelerator, getMainWindow));
+  ipcMain.handle('shortcut:unregister', () => unregisterScreenshotShortcut());
 
   ipcMain.handle('screen-toast:show', (_event, message: string, duration?: number) => {
     showScreenToast(message, duration);

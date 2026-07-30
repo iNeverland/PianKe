@@ -21,7 +21,9 @@ win:
   target: nsis
   icon: resources/icon.png
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   icon: resources/icon.icns
 publish:
   provider: github

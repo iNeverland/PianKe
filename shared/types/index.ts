@@ -174,6 +174,30 @@ export interface DiaryTimelineMonth {
   days: DiaryTimelineDay[];
 }
 
+// 应用自动更新状态（主进程通过 IPC 推送给渲染进程）
+export type AppUpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'downloaded'
+  | 'not-available'
+  | 'error'
+  | 'disabled';
+
+export type UpdateCheckSource = 'automatic' | 'manual';
+
+export interface AppUpdateState {
+  status: AppUpdateStatus;
+  currentVersion: string;
+  version?: string;
+  percent?: number;
+  releaseDate?: string;
+  releaseNotes?: string;
+  message?: string;
+  checkSource?: UpdateCheckSource;
+}
+
 // IPC 通道名称
 export const IPC_CHANNELS = {
   // 库管理
@@ -233,5 +257,10 @@ export const IPC_CHANNELS = {
   STATS_MONTHLY_TREND: 'stats:monthlyTrend',
   STATS_MONTH_SUMMARY: 'stats:monthSummary',
   STATS_DIARY_CALENDAR: 'stats:diaryCalendar',
+
+  // 应用更新
+  UPDATE_GET_STATE: 'update:getState',
+  UPDATE_CHECK: 'update:check',
+  UPDATE_DOWNLOAD: 'update:download',
 
 } as const;

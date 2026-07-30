@@ -59,7 +59,7 @@ export function showScreenToast(message: string, duration = 2200): void {
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:'Microsoft YaHei',sans-serif}
 body{display:flex;align-items:center;justify-content:center}
-.toast{max-width:100%;height:44px;display:flex;align-items:center;justify-content:center;padding:0 22px;border-radius:22px;background:rgba(20,20,20,.88);color:#fff;font-size:14px;font-weight:600;box-shadow:0 12px 36px rgba(0,0,0,.28);white-space:nowrap}
+.toast{max-width:100%;height:44px;display:flex;align-items:center;justify-content:center;padding:0 22px;border-radius:22px;background:rgba(20,20,20,.88);color:#fff;font-size:14px;font-weight:600;white-space:nowrap}
 </style></head><body><div class="toast">${escapeHtml(text)}</div></body></html>`;
 
   screenToastWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);

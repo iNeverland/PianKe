@@ -4,6 +4,8 @@ import electron from 'vite-plugin-electron';
 import path from 'path';
 import fs from 'fs';
 
+const appVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')).version as string;
+
 function getSyncedPreloadContent(): string {
   const typesPath = path.resolve(__dirname, 'shared/types/index.ts');
   const preloadPath = path.resolve(__dirname, 'electron/preload.cjs');
@@ -15,7 +17,7 @@ function getSyncedPreloadContent(): string {
   const channelsBlock = `// This block is generated from shared/types/index.ts during build.\n// Edit IPC_CHANNELS in shared/types/index.ts, not this generated copy.\nconst IPC_CHANNELS = ${match[1]};`;
 
   return preloadContent.replace(
-    /\/\/\s*.*?(?:generated|鈿狅笍)[\s\S]*?const IPC_CHANNELS\s*=\s*\{[\s\S]*?\};/,
+    /const IPC_CHANNELS\s*=\s*\{[\s\S]*?\n\};/,
     channelsBlock
   );
 }
@@ -66,6 +68,9 @@ function copySplashPlugin(): Plugin {
 }
 
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
   server: {
     open: false,
   },
