@@ -1,0 +1,20 @@
+node_modules/
+dist/
+dist-electron/
+release/
+out/
+*.log
+.DS_Store
+Thumbs.db
+
+# Code signing secrets
+*.pfx
+*.p12
+*.pvk
+*.spc
+*.key
+*.pem
+*.cer
+*.crt
+.env
+.env.*

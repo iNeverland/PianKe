@@ -1,0 +1,157 @@
+const { contextBridge, ipcRenderer } = require('electron');
+
+// ⚠️ 此块由 generate-preload-channels 插件从 shared/types/index.ts 自动同步
+// 请勿手动修改，如需新增通道请修改 shared/types/index.ts
+const IPC_CHANNELS = {
+  LIBRARY_OPEN: "library:open",
+  LIBRARY_CREATE: "library:create",
+  LIBRARY_REOPEN: "library:reopen",
+  LIBRARY_GET_PATH: "library:getPath",
+  LIBRARY_GET_INFO: "library:getInfo",
+  LIBRARY_GET_SUMMARY: "library:getSummary",
+  LIBRARY_GET_RECENT_WATCHES: "library:getRecentWatches",
+  MOVIE_LIST: "movie:list",
+  MOVIE_GET_BY_ID: "movie:getById",
+  MOVIE_CREATE: "movie:create",
+  MOVIE_UPDATE: "movie:update",
+  MOVIE_DELETE: "movie:delete",
+  MOVIE_SEARCH: "movie:search",
+  MOVIE_UPDATE_PROGRESS: "movie:updateProgress",
+  MOVIE_ADD_TAG: "movie:addTag",
+  MOVIE_REMOVE_TAG: "movie:removeTag",
+  MOVIE_GET_ALL_TAGS: "movie:getAllTags",
+  MOVIE_GET_POSTER_URL: "movie:getPosterUrl",
+  MOVIE_EXPORT_ALL: "movie:exportAll",
+  MOVIE_IMPORT_CSV: "movie:importCsv",
+  MOVIE_LIST_SCREENSHOTS: "movie:listScreenshots",
+  MOVIE_ADD_SCREENSHOT: "movie:addScreenshot",
+  MOVIE_DELETE_SCREENSHOT: "movie:deleteScreenshot",
+  MOVIE_GET_SCREENSHOT: "movie:getScreenshot",
+  MOVIE_UPDATE_SCREENSHOT_INFO: "movie:updateScreenshotInfo",
+  DIARY_ADD: "diary:add",
+  DIARY_UPDATE: "diary:update",
+  DIARY_DELETE: "diary:delete",
+  DIARY_GET_BY_MOVIE: "diary:getByMovie",
+  DIARY_GET_TIMELINE: "diary:getTimeline",
+  WATCHLIST_LIST: "watchlist:list",
+  WATCHLIST_MARK_AS_WATCHED: "watchlist:markAsWatched",
+  WATCHLIST_MARK_AS_WATCHING: "watchlist:markAsWatching",
+  STATS_DASHBOARD: "stats:dashboard",
+  STATS_OVERVIEW: "stats:overview",
+  STATS_BY_MEDIA_TYPE: "stats:byMediaType",
+  STATS_BY_YEAR: "stats:byYear",
+  STATS_BY_GENRE: "stats:byGenre",
+  STATS_BY_RATING: "stats:byRating",
+  STATS_BY_COUNTRY: "stats:byCountry",
+  STATS_DIARY_RATING_DIST: "stats:diaryRatingDist",
+  STATS_MONTHLY_TREND: "stats:monthlyTrend",
+  STATS_MONTH_SUMMARY: "stats:monthSummary",
+  STATS_DIARY_CALENDAR: "stats:diaryCalendar",
+};
+
+const electronAPI = {
+  platform: process.platform,
+  setTheme: (mode) => ipcRenderer.invoke('theme:update', mode),
+
+  window: {
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    maximize: () => ipcRenderer.invoke('window:maximize'),
+    close: () => ipcRenderer.invoke('window:close'),
+    isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+    onMaximizeChange: (callback) => {
+      ipcRenderer.on('window:maximizeChanged', (_event, isMaximized) => callback(isMaximized));
+    },
+  },
+
+  // 截图快捷键：主进程 → 渲染进程事件
+  onScreenshotTrigger: (callback) => {
+    const handler = () => callback();
+    ipcRenderer.on('screenshot:trigger', handler);
+    // 返回取消订阅函数
+    return () => ipcRenderer.removeListener('screenshot:trigger', handler);
+  },
+
+  // 注册快捷键到主进程
+  registerShortcut: (accelerator) => ipcRenderer.invoke('shortcut:register', accelerator),
+  showScreenToast: (message, duration) => ipcRenderer.invoke('screen-toast:show', message, duration),
+
+  // 获取桌面捕获源（用于屏幕截图）
+  getDesktopSources: () => ipcRenderer.invoke('desktop-capturer:getSources'),
+  getPrimaryScreenSnapshot: () => ipcRenderer.invoke('desktop-capturer:getPrimaryScreenSnapshot'),
+
+  // 启动桌面裁剪窗口（传入 movieId 和全屏截图 data URL）
+  startCrop: (movieId, fullScreenDataUrl) => ipcRenderer.invoke('crop:start', movieId, fullScreenDataUrl),
+
+  // 监听截图保存完成
+  onScreenshotSaved: (callback) => {
+    const handler = (_event, screenshots) => callback(screenshots);
+    ipcRenderer.on('screenshot:saved', handler);
+    return () => ipcRenderer.removeListener('screenshot:saved', handler);
+  },
+
+  library: {
+    open: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_OPEN),
+    reopen: (dirPath) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REOPEN, dirPath),
+    create: (name) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CREATE, name),
+    getPath: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_PATH),
+    getInfo: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_INFO),
+    getSummary: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_SUMMARY),
+    getRecentWatches: (days) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_RECENT_WATCHES, days),
+    createBackup: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CREATE_BACKUP),
+  },
+
+  movie: {
+    list: (filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST, filters),
+    getById: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_BY_ID, id),
+    create: (data, posterFilePath) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_CREATE, data, posterFilePath),
+    update: (id, data, posterFilePath) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE, id, data, posterFilePath),
+    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE, id),
+    search: (query, filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_SEARCH, query, filters),
+    updateProgress: (id, episode) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_PROGRESS, id, episode),
+    addTag: (id, tag) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_ADD_TAG, id, tag),
+    removeTag: (id, tag) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_REMOVE_TAG, id, tag),
+    getAllTags: () => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_ALL_TAGS),
+    getPosterUrl: (id, thumb) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_POSTER_URL, id, thumb),
+    exportAll: () => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_EXPORT_ALL),
+    importCsv: (csvText) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_IMPORT_CSV, csvText),
+    listScreenshots: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST_SCREENSHOTS, id),
+    addScreenshot: (id, base64Data, ext) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_ADD_SCREENSHOT, id, base64Data, ext),
+    deleteScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE_SCREENSHOT, id, filename),
+    getScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_SCREENSHOT, id, filename),
+    updateScreenshotInfo: (id, filename, info) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_SCREENSHOT_INFO, id, filename, info),
+  },
+
+  diary: {
+    getByMovie: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_BY_MOVIE, movieId),
+    add: (movieId, data) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_ADD, movieId, data),
+    update: (movieId, entryId, data) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_UPDATE, movieId, entryId, data),
+    delete: (movieId, entryId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_DELETE, movieId, entryId),
+    getTimeline: () => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_TIMELINE),
+  },
+
+  watchlist: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_LIST),
+    markAsWatched: (movieId, entryData) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_MARK_AS_WATCHED, movieId, entryData),
+    markAsWatching: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_MARK_AS_WATCHING, movieId),
+  },
+
+  stats: {
+    dashboard: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_DASHBOARD),
+    overview: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_OVERVIEW),
+    byMediaType: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_MEDIA_TYPE),
+    byYear: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_YEAR),
+    byGenre: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_GENRE),
+    byRating: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_RATING),
+    byCountry: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_COUNTRY),
+    diaryRatingDist: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_DIARY_RATING_DIST),
+    monthlyTrend: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTHLY_TREND),
+    monthSummary: (year, month) => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTH_SUMMARY, year, month),
+    diaryCalendar: (days) => ipcRenderer.invoke(IPC_CHANNELS.STATS_DIARY_CALENDAR, days),
+  },
+
+  onOpenLibraryPath: (callback) => {
+    ipcRenderer.on('open-library-path', (_event, dirPath) => callback(dirPath));
+  },
+};
+
+contextBridge.exposeInMainWorld('electronAPI', electronAPI);
