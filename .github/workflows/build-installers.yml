@@ -2,10 +2,14 @@ name: 构建安装包
 
 on:
   push:
+    branches:
+      - main
+    tags:
+      - "*"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -17,12 +21,12 @@ jobs:
         include:
           - name: macOS
             os: macos-14
-            command: npm run electron:build
+            command: npm run electron:build --
             artifact: PianKe-macOS
             path: release/*.dmg
           - name: Windows
             os: windows-latest
-            command: npm run electron:build:win
+            command: npm run electron:build:win --
             artifact: PianKe-Windows
             path: release/*.exe
 
@@ -39,8 +43,10 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 构建安装包
-        run: ${{ matrix.command }}
+      - name: 构建并按需发布
+        run: ${{ matrix.command }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: 上传安装包
         uses: actions/upload-artifact@v4

@@ -22,6 +22,12 @@ win:
 mac:
   target: dmg
   icon: resources/icon.icns
+publish:
+  provider: github
+  owner: iNeverland
+  repo: PianKe
+  vPrefixedTagName: false
+  releaseType: release
 fileAssociations:
   - ext: pianke
     name: PianKe Library
