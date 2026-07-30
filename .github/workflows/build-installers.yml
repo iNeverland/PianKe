@@ -2,11 +2,8 @@ name: 构建安装包
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "*"
-  workflow_dispatch:
 
 permissions:
   contents: write
@@ -43,8 +40,8 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 构建并按需发布
-        run: ${{ matrix.command }} --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+      - name: 构建并发布 Release
+        run: ${{ matrix.command }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
