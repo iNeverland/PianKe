@@ -74,6 +74,20 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
       return null;
     }
 
+    // macOS 的完整显示器缩略图包含菜单栏与 Dock；默认只交给裁剪窗口可用的工作区。
+    if (process.platform === 'darwin') {
+      const imageSize = source.thumbnail.getSize();
+      const scaleX = imageSize.width / primaryDisplay.bounds.width;
+      const scaleY = imageSize.height / primaryDisplay.bounds.height;
+      const workArea = primaryDisplay.workArea;
+      const cropX = Math.max(0, Math.round((workArea.x - primaryDisplay.bounds.x) * scaleX));
+      const cropY = Math.max(0, Math.round((workArea.y - primaryDisplay.bounds.y) * scaleY));
+      const cropWidth = Math.min(imageSize.width - cropX, Math.round(workArea.width * scaleX));
+      const cropHeight = Math.min(imageSize.height - cropY, Math.round(workArea.height * scaleY));
+
+      return source.thumbnail.crop({ x: cropX, y: cropY, width: cropWidth, height: cropHeight }).toDataURL();
+    }
+
     return source.thumbnail.toDataURL();
   });
 
@@ -157,6 +171,5 @@ async function showMoviePicker(baseDir: string): Promise<void> {
     return;
   }
 
-  showScreenToast('请选择影片');
   showMoviePickerWindow(baseDir, movies);
 }

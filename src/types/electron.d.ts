@@ -54,8 +54,7 @@ export interface ElectronAPI {
     removeTag: (id: string, tag: string) => Promise<MovieMetadata>;
     getAllTags: () => Promise<string[]>;
     getPosterUrl: (id: string, thumb?: boolean) => Promise<string | null>;
-    exportAll: () => Promise<MovieMetadata[]>;
-    importCsv: (csvText: string) => Promise<{ imported: number; errors: string[] }>;
+    exportExcel: () => Promise<{ filePath: string; movieCount: number; diaryCount: number } | null>;
     listScreenshots: (id: string) => Promise<ScreenshotInfo[]>;
     addScreenshot: (id: string, base64Data: string, ext: string) => Promise<ScreenshotInfo[]>;
     deleteScreenshot: (id: string, filename: string) => Promise<ScreenshotInfo[]>;

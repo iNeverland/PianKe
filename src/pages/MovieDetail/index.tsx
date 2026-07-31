@@ -921,8 +921,8 @@ export default function MovieDetail() {
         <div className="flex flex-col gap-4">
           <div>
             <label className="form-label">当前集号</label>
-            <input type="number" min={1} max={movie.progress?.totalEpisodes || 1} value={progressForm.episode}
-              onChange={(e) => setProgressForm({ episode: Math.min(movie.progress?.totalEpisodes || 1, Math.max(1, Number(e.target.value) || 1)) })}
+            <input type="number" min={0} max={movie.progress?.totalEpisodes || 1} value={progressForm.episode}
+              onChange={(e) => setProgressForm({ episode: Math.min(movie.progress?.totalEpisodes || 1, Math.max(0, Number(e.target.value) || 0)) })}
               className="form-input" />
           </div>
           {movie.progress?.totalEpisodes && (
@@ -960,7 +960,7 @@ export default function MovieDetail() {
         <p className="text-text-secondary text-sm mb-5">确定要删除「{movie.title}」吗？此操作不可撤销。</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-ghost">取消</button>
-          <button onClick={handleDelete} className="btn btn-danger btn-sm">删除</button>
+          <button onClick={handleDelete} className="btn btn-danger">删除</button>
         </div>
       </Modal>
 
@@ -971,7 +971,7 @@ export default function MovieDetail() {
           <button onClick={() => setDeletingEntryId(null)} className="btn btn-ghost">取消</button>
           <button
             onClick={() => deletingEntryId && handleDeleteEntry(deletingEntryId)}
-            className="btn btn-danger btn-sm"
+            className="btn btn-danger"
           >
             删除
           </button>

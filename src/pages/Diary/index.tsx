@@ -7,6 +7,9 @@ import EmptyState from '@/components/common/EmptyState';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import PosterThumb from '@/components/common/PosterThumb';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
+import ContextMenu from '@/components/common/ContextMenu';
+import Modal from '@/components/common/Modal';
+import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
@@ -22,6 +25,18 @@ export default function Diary() {
   // 日期筛选
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [diaryContextMenu, setDiaryContextMenu] = useState<{
+    x: number;
+    y: number;
+    movieId: string;
+    entryId: string;
+    movieTitle: string;
+  } | null>(null);
+  const [deletingDiary, setDeletingDiary] = useState<{
+    movieId: string;
+    entryId: string;
+    movieTitle: string;
+  } | null>(null);
   const [isDark, setIsDark] = useState(() => {
     const theme = document.documentElement.getAttribute('data-theme');
     if (theme === 'dark') return true;
@@ -86,6 +101,31 @@ export default function Diary() {
   function clearDateFilter() {
     setDateFrom('');
     setDateTo('');
+  }
+
+  function handleDiaryContextMenu(event: React.MouseEvent, item: { movieId: string; id: string; movieTitle: string }) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDiaryContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      movieId: item.movieId,
+      entryId: item.id,
+      movieTitle: item.movieTitle,
+    });
+  }
+
+  async function deleteDiaryEntry() {
+    if (!deletingDiary) return;
+    const entry = deletingDiary;
+    setDeletingDiary(null);
+    try {
+      await api.diary.delete(entry.movieId, entry.entryId);
+      await loadTimeline();
+      showToast('观影记录已删除');
+    } catch (err: any) {
+      showToast(err.message || '删除失败');
+    }
   }
 
   // 导航限制
@@ -326,6 +366,7 @@ export default function Diary() {
                         <div
                           key={`${item.movieId}-${item.id}`}
                           onClick={() => navigate(`/movie/${item.movieId}`)}
+                          onContextMenu={(event) => handleDiaryContextMenu(event, item)}
                           className="timeline-item"
                         >
                           <PosterThumb
@@ -483,6 +524,40 @@ export default function Diary() {
           </div>
         </div>
       </div>
+
+      {diaryContextMenu && (
+        <ContextMenu
+          position={diaryContextMenu}
+          onClose={() => setDiaryContextMenu(null)}
+          items={[
+            {
+              label: '删除日记',
+              danger: true,
+              onClick: () => setDeletingDiary({
+                movieId: diaryContextMenu.movieId,
+                entryId: diaryContextMenu.entryId,
+                movieTitle: diaryContextMenu.movieTitle,
+              }),
+            },
+          ]}
+        />
+      )}
+
+      <Modal
+        open={Boolean(deletingDiary)}
+        onClose={() => setDeletingDiary(null)}
+        title="删除观影记录"
+        width="400px"
+        hideClose
+      >
+        <p className="text-text-secondary text-sm mb-5">
+          确定要删除「{deletingDiary?.movieTitle}」的这条观影记录吗？
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setDeletingDiary(null)} className="btn btn-ghost">取消</button>
+          <button onClick={deleteDiaryEntry} className="btn btn-danger">删除</button>
+        </div>
+      </Modal>
     </div>
   );
 }

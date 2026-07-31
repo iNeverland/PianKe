@@ -30,7 +30,9 @@ export function startCropWindow(baseDir: string, movieId: string | null, fullScr
   }
 
   const display = screen.getPrimaryDisplay();
-  const { x, y, width, height } = display.bounds;
+  // macOS 工作区会排除顶部菜单栏及 Dock；裁剪窗口与截图源必须使用同一范围。
+  const captureArea = process.platform === 'darwin' ? display.workArea : display.bounds;
+  const { x, y, width, height } = captureArea;
 
   cropWindow = new BrowserWindow({
     x,
