@@ -1,6 +1,6 @@
 {
   "name": "pianke",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "description": "Personal cinema journal - desktop app",
   "main": "dist-electron/main.js",
