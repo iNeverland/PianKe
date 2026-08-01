@@ -319,6 +319,53 @@ export async function updateMovie(
     }
   }
 
+  // 综艺 segments 变更 → 记录日记（10 分钟内合并）
+  if (
+    updated.mediaType === '综艺' &&
+    updated.progress?.segments &&
+    JSON.stringify(existing.progress?.segments) !== JSON.stringify(updated.progress.segments)
+  ) {
+    const today = getLocalDateStr();
+    const now = new Date();
+    const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const filled = updated.progress.segments.filter(s => s.trim());
+    const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
+    const diaryEntries = dataStore.getDiary(id);
+
+    const TEN_MINUTES = 10 * 60 * 1000;
+    const lastProgressIdx = (() => {
+      for (let i = diaryEntries.length - 1; i >= 0; i--) {
+        if (diaryEntries[i].kind === 'progress') return i;
+      }
+      return -1;
+    })();
+
+    let replaceExisting = false;
+    if (lastProgressIdx !== -1) {
+      const lastEntry = diaryEntries[lastProgressIdx];
+      const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00'}:00`);
+      if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
+        replaceExisting = true;
+      }
+    }
+
+    if (replaceExisting) {
+      diaryEntries[lastProgressIdx] = {
+        ...diaryEntries[lastProgressIdx],
+        watchTime,
+        review,
+      };
+    } else {
+      diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'progress' });
+    }
+
+    dataStore.setDiary(id, diaryEntries);
+    const diaryPath = getDiaryPath(newMovieDir);
+    await writeQueue.enqueue(diaryPath, async () => {
+      fs.writeFileSync(diaryPath, JSON.stringify(diaryEntries, null, 2), 'utf-8');
+    });
+  }
+
   return updated;
 }
 

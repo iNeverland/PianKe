@@ -10,7 +10,7 @@ import CustomDatePicker from '@/components/common/CustomDatePicker';
 const GENRE_OPTIONS = [
   '动作', '冒险', '喜剧', '犯罪',
   '剧情', '家庭', '奇幻', '历史',
-  '恐怖', '音乐', '悬疑', '爱情', '科幻',
+  '恐怖', '音乐', '悬疑', '爱情', '科幻', '古装', '真人秀',
   '惊悚', '战争', '西部',
 ];
 
@@ -202,7 +202,6 @@ export default function MovieForm() {
 
   async function handleSave() {
     if (!form.title.trim()) { showToast('标题不能为空'); return; }
-    if (!form.director.trim()) { showToast('导演不能为空'); return; }
     try {
       const movieData = {
         ...form,
@@ -297,7 +296,7 @@ export default function MovieForm() {
             </div>
             <div className="grid grid-cols-2 gap-5">
               <div>
-                <label className="form-label" htmlFor="form-director">导演 *</label>
+                <label className="form-label" htmlFor="form-director">导演</label>
                 <input id="form-director" type="text" value={form.director} onChange={(e) => setForm({ ...form, director: e.target.value })} className="form-input" placeholder="克里斯托弗·诺兰" />
               </div>
               <div>
@@ -325,20 +324,6 @@ export default function MovieForm() {
                 />
               </div>
               <div>
-                <label className="form-label">集数</label>
-                <CustomSelect
-                  value={form.progress ? '多集' : '单集'}
-                  onChange={(v) => {
-                    const isMulti = v === '多集';
-                    setForm({ ...form, progress: isMulti ? (form.progress || { episode: form.status === '想看' ? 0 : 1, totalEpisodes: 1 }) : null });
-                  }}
-                  options={[
-                    { label: '单集', value: '单集' },
-                    { label: '多集', value: '多集' },
-                  ]}
-                />
-              </div>
-              <div>
                 <label className="form-label">状态</label>
                 <CustomSelect
                   value={form.status}
@@ -357,12 +342,12 @@ export default function MovieForm() {
                   ]}
                 />
               </div>
-            </div>
-            <div className="grid grid-cols-3 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-country">国家</label>
                 <input id="form-country" type="text" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="form-input" placeholder="美国 / 英国 / 加拿大" />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-runtime">片长</label>
                 <input id="form-runtime" type="number" value={form.runtime || ''} onChange={(e) => setForm({ ...form, runtime: Number(e.target.value) })} className="form-input" placeholder="169分钟" />
@@ -389,14 +374,73 @@ export default function MovieForm() {
           </div>
 
           {/* 剧集进度 */}
-          {form.progress && (() => {
-            const p = form.progress!;
-            const percent = p.totalEpisodes > 0 ? Math.min(100, Math.round((p.episode / p.totalEpisodes) * 100)) : 0;
+          <div className="form-section-card">
+            <div className="form-section-title">剧集信息</div>
+            <label className="flex items-center gap-2 cursor-pointer select-none" onClick={() => {
+              if (form.progress) {
+                setForm({ ...form, progress: null });
+              } else if (form.mediaType === '综艺') {
+                setForm({ ...form, progress: { episode: 0, totalEpisodes: 1, segments: [''] } });
+              } else {
+                setForm({ ...form, progress: { episode: form.status === '想看' ? 0 : 1, totalEpisodes: 1 } });
+              }
+            }}>
+              <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${form.progress ? 'bg-accent border-accent' : 'border-border'}`}>
+                {form.progress && (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                )}
+              </div>
+              多集
+            </label>
+            {form.progress && (() => {
+              const p = form.progress!;
+              const isVariety = form.mediaType === '综艺';
 
-            return (
-              <div className="form-section-card">
-                <div className="form-section-title">剧集信息</div>
-                <div className="grid grid-cols-2 gap-5">
+              if (isVariety) {
+                const segs = p.segments || [''];
+                return (
+                  <div className="mt-4">
+                    <label className="form-label">进度条目</label>
+                    <div className="flex flex-wrap gap-2">
+                      {segs.map((label, i) => (
+                        <div key={i} className="relative group">
+                          <input
+                            type="text"
+                            value={label}
+                            onChange={(e) => {
+                              const newSegs = [...segs];
+                              newSegs[i] = e.target.value;
+                              setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
+                            }}
+                            className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border'}`}
+                          size={Math.max(2, label.length || 1)}
+                            placeholder={`#${i + 1}`}
+                          />
+                          <button
+                            onClick={() => {
+                              const newSegs = segs.filter((_, j) => j !== i);
+                              if (newSegs.length === 0) newSegs.push('');
+                              setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
+                            }}
+                            className={`absolute top-0 right-0.5 text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent leading-none ${label.trim() ? 'text-white' : 'text-[#e53e3e]'}`}
+                          >×</button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newSegs = [...segs, ''];
+                          setForm({ ...form, progress: { ...p, segments: newSegs, totalEpisodes: newSegs.length } });
+                        }}
+                        className="w-8 h-8 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent transition-colors flex items-center justify-center bg-transparent cursor-pointer"
+                      >+</button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-2 gap-5 mt-4">
                   <div>
                     <label className="form-label">总集数</label>
                     <input type="number" min="1" value={p.totalEpisodes} onChange={(e) => {
@@ -412,19 +456,9 @@ export default function MovieForm() {
                     }} className="form-input" />
                   </div>
                 </div>
-                <div className="mt-3">
-                  <label className="form-label">进度</label>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 stat-bar-bg rounded-full overflow-hidden h-2.5">
-                      <div className="stat-bar-fill rounded-full" style={{ width: `${percent}%` }} />
-                    </div>
-                    <span className="text-xs text-text-secondary font-semibold whitespace-nowrap">{percent}%</span>
-                  </div>
-                </div>
-                <p className="text-xs text-text-muted mt-2">当前进度：第 {p.episode} 集 / 共 {p.totalEpisodes} 集</p>
-              </div>
-            );
-          })()}
+              );
+            })()}
+          </div>
 
           {/* 类型标签 */}
           <div className="form-section-card">
@@ -463,6 +497,7 @@ export default function MovieForm() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

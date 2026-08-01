@@ -7,13 +7,25 @@ import EmptyState from '@/components/common/EmptyState';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import PosterThumb from '@/components/common/PosterThumb';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
-import ContextMenu from '@/components/common/ContextMenu';
 import Modal from '@/components/common/Modal';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const WEEK_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
+
+// 每日热力图颜色（分级：1-2 / 3-4 / 5+）
+function dailyHeatStyle(count: number, isDark: boolean): React.CSSProperties {
+  if (count === 0) return {};
+  if (isDark) {
+    if (count <= 2) return { background: '#1a4a2e' };
+    if (count <= 4) return { background: '#9e8020' };
+    return { background: '#b53030' };
+  }
+  if (count <= 2) return { background: '#d8f0db' };
+  if (count <= 4) return { background: '#f0d030' };
+  return { background: '#e53e3e' };
+}
 
 export default function Diary() {
   const navigate = useNavigate();
@@ -25,13 +37,6 @@ export default function Diary() {
   // 日期筛选
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [diaryContextMenu, setDiaryContextMenu] = useState<{
-    x: number;
-    y: number;
-    movieId: string;
-    entryId: string;
-    movieTitle: string;
-  } | null>(null);
   const [deletingDiary, setDeletingDiary] = useState<{
     movieId: string;
     entryId: string;
@@ -101,18 +106,6 @@ export default function Diary() {
   function clearDateFilter() {
     setDateFrom('');
     setDateTo('');
-  }
-
-  function handleDiaryContextMenu(event: React.MouseEvent, item: { movieId: string; id: string; movieTitle: string }) {
-    event.preventDefault();
-    event.stopPropagation();
-    setDiaryContextMenu({
-      x: event.clientX,
-      y: event.clientY,
-      movieId: item.movieId,
-      entryId: item.id,
-      movieTitle: item.movieTitle,
-    });
   }
 
   async function deleteDiaryEntry() {
@@ -267,20 +260,6 @@ export default function Diary() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewYear, viewMonth]);
 
-  // 每日热力图颜色
-  function dailyHeatStyle(dateStr: string): React.CSSProperties {
-    const count = heatmapData.daily.get(dateStr)?.size || 0;
-    if (count === 0) return {};
-    if (isDark) {
-      if (count === 1) return { background: '#1a4a2e' };
-      if (count === 2) return { background: '#9e8020' };
-      return { background: '#b53030' };
-    }
-    if (count === 1) return { background: '#d8f0db' };
-    if (count === 2) return { background: '#f0d030' };
-    return { background: '#e53e3e' };
-  }
-
   if (loading) return (
     <div>
       <Header title="观影日记" subtitle="加载中..." showAdd={false} />
@@ -363,31 +342,38 @@ export default function Diary() {
                     {/* 当日条目列表 */}
                     <div className="flex flex-col gap-1">
                       {day.items.map((item) => (
-                        <div
-                          key={`${item.movieId}-${item.id}`}
-                          onClick={() => navigate(`/movie/${item.movieId}`)}
-                          onContextMenu={(event) => handleDiaryContextMenu(event, item)}
-                          className="timeline-item"
-                        >
-                          <PosterThumb
-                            movieId={item.movieId}
-                            hasPoster={Boolean(item.movieThumbPath)}
-                            alt=""
-                            className="w-10 h-[60px] rounded object-cover flex-shrink-0"
-                          />
-                          <div className="flex-1 min-w-0 py-0.5">
-                            <p className="text-text-primary text-sm font-medium truncate leading-snug">
-                              {item.movieTitle}
-                              {item.watchTime && <span className="text-text-muted font-normal ml-1.5 text-xs">{item.watchTime}</span>}
-                            </p>
-                            <div className="flex items-center gap-2.5 mt-1">
-                              {item.rating > 0 && <StarRating value={item.rating} readOnly size={12} />}
-                              {item.rating === 0 && <span className="text-text-muted text-[0.65rem]">未评分</span>}
+                        <div key={`${item.movieId}-${item.id}`} className="relative group">
+                          <div
+                            onClick={() => navigate(`/movie/${item.movieId}`)}
+                            className="timeline-item"
+                          >
+                            <PosterThumb
+                              movieId={item.movieId}
+                              hasPoster={Boolean(item.movieThumbPath)}
+                              alt=""
+                              className="w-10 h-[60px] rounded object-cover flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0 py-0.5">
+                              <p className="text-text-primary text-sm font-medium truncate leading-snug">
+                                {item.movieTitle}
+                                {item.watchTime && <span className="text-text-muted font-normal ml-1.5 text-xs">{item.watchTime}</span>}
+                              </p>
+                              <div className="flex items-center gap-2.5 mt-1">
+                                {item.rating > 0 && <StarRating value={item.rating} readOnly size={12} />}
+                                {item.rating === 0 && <span className="text-text-muted text-[0.65rem]">未评分</span>}
+                              </div>
+                              {item.review && (
+                                <p className="text-text-muted text-xs italic mt-1.5 line-clamp-2 leading-relaxed">{item.review}</p>
+                              )}
                             </div>
-                            {item.review && (
-                              <p className="text-text-muted text-xs italic mt-1.5 line-clamp-2 leading-relaxed">{item.review}</p>
-                            )}
                           </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingDiary({ movieId: item.movieId, entryId: item.id, movieTitle: item.movieTitle });
+                            }}
+                            className="absolute top-1/2 -translate-y-1/2 right-4 !text-[#e53e3e] text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent"
+                          >移除</button>
                         </div>
                       ))}
                     </div>
@@ -439,7 +425,7 @@ export default function Diary() {
                       <div
                         key={cell.date}
                         title={`${cell.date}${cell.inMonth ? ` — ${heatmapData.daily.get(cell.date)?.size || 0} 部` : ''}`}
-                        style={cell.inMonth ? dailyHeatStyle(cell.date) : { background: 'transparent', color: '#c5c3bd' }}
+                        style={cell.inMonth ? dailyHeatStyle(heatmapData.daily.get(cell.date)?.size || 0, isDark) : { background: 'transparent', color: '#c5c3bd' }}
                         className="aspect-square rounded-[4px] flex items-center justify-center text-[0.65rem] leading-none font-medium font-display"
                       >
                         {cell.day}
@@ -525,23 +511,6 @@ export default function Diary() {
         </div>
       </div>
 
-      {diaryContextMenu && (
-        <ContextMenu
-          position={diaryContextMenu}
-          onClose={() => setDiaryContextMenu(null)}
-          items={[
-            {
-              label: '删除日记',
-              danger: true,
-              onClick: () => setDeletingDiary({
-                movieId: diaryContextMenu.movieId,
-                entryId: diaryContextMenu.entryId,
-                movieTitle: diaryContextMenu.movieTitle,
-              }),
-            },
-          ]}
-        />
-      )}
 
       <Modal
         open={Boolean(deletingDiary)}

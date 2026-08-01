@@ -213,6 +213,13 @@ export default function Home() {
 
   const displayedMovies = useMemo(() => filteredMovies.slice(0, visibleCount), [filteredMovies, visibleCount]);
 
+  async function handleStatusChange() {
+    try {
+      const recent = await api.library.getRecentWatches(getRecentDays());
+      setRecentMovies(recent);
+    } catch { /* 静默 */ }
+  }
+
   function handleMovieDelete(id: string) {
     setAllMovies((prev) => prev.filter((movie) => movie.id !== id));
     setRecentMovies((prev) => prev.filter((movie) => movie.id !== id));
@@ -354,7 +361,7 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
-          <MovieGrid movies={recentMovies.slice(0, 5)} onDelete={handleMovieDelete} />
+          <MovieGrid movies={recentMovies.slice(0, 5)} onStatusChange={handleStatusChange} onDelete={handleMovieDelete} />
           <div className="mb-8" />
         </>
       )}
@@ -369,6 +376,7 @@ export default function Home() {
         movies={displayedMovies}
         emptyTitle={search ? '没有找到匹配的影视' : '还没有添加影视'}
         emptyDescription={search ? '试试其他关键词或筛选条件' : '点击右上角「添加」开始记录'}
+        onStatusChange={handleStatusChange}
         onDelete={handleMovieDelete}
       />
 

@@ -31,7 +31,7 @@ export default function Sidebar() {
         <img src="logo/PianKe.svg" alt="PianKe" className="sidebar-logo" />
         <div className="sidebar-divider" />
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path;
+          const isActive = item.path === '/' ? location.pathname === '/' || location.pathname.startsWith('/movie/') : location.pathname === item.path;
           return (
             <button
               key={item.path}

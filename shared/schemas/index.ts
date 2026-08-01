@@ -28,6 +28,7 @@ export const ProgressSchema = z.preprocess((val: any) => {
   // 多集影视允许为 0，表示尚未开始观看或已重置进度。
   episode: z.number().int().nonnegative(),
   totalEpisodes: z.number().int().positive(),
+  segments: z.array(z.string()).optional(),
 }));
 
 export const MovieMetadataSchema = z.object({
@@ -75,7 +76,7 @@ export const CreateMovieInputSchema = z.object({
   title: z.string().min(1, '标题不能为空'),
   titleOriginal: z.string().optional(),
   mediaType: z.enum(['电影', '剧集', '综艺', '纪录片', '动画']),
-  director: z.string().min(1, '导演不能为空'),
+  director: z.string().optional().default(''),
   cast: z.array(z.string()).default([]),
   releaseDate: z.string().optional().default(''),
   country: z.string().optional().default(''),

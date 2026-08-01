@@ -4,10 +4,13 @@ export type MediaType = '电影' | '剧集' | '综艺' | '纪录片' | '动画';
 // 观看状态
 export type WatchStatus = '在看' | '已看完' | '想看';
 
-// 剧集进度（简化版：仅集号，无季概念）
+// 剧集进度
+// - 剧集/常规影视：episode + totalEpisodes
+// - 综艺：segments[] 自由文本标签，非空项视为已看
 export interface Progress {
-  episode: number;       // 当前看到第几集
-  totalEpisodes: number; // 总集数
+  episode: number;          // 当前看到第几集（综艺时为已填 segment 数量）
+  totalEpisodes: number;    // 总集数（综艺时为 segment 总数）
+  segments?: string[];      // 综艺专用：自定义进度标签，如「先导片」「第1期」「番外篇」
 }
 
 // 影视元数据

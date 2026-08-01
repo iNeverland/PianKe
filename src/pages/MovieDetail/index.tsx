@@ -9,7 +9,6 @@ import Modal from '@/components/common/Modal';
 import { showToast, showToastWithAction } from '@/components/common/Toast';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ScreenshotImage from '@/components/common/ScreenshotImage';
-import Header from '@/components/layout/Header';
 import FinishWatchingModal, { type FinishWatchingData } from '@/components/movie/FinishWatchingModal';
 
 export default function MovieDetail() {
@@ -22,6 +21,9 @@ export default function MovieDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [showFinishWatching, setShowFinishWatching] = useState(false);
+  const [localSegs, setLocalSegs] = useState<string[] | null>(null);
+  const localSegsRef = useRef(localSegs);
+  localSegsRef.current = localSegs;
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [diaryExpanded, setDiaryExpanded] = useState(false);
@@ -64,6 +66,17 @@ export default function MovieDetail() {
     const itemWidth = el.clientWidth / 3;
     el.scrollBy({ left: dir === 'left' ? -itemWidth : itemWidth, behavior: 'smooth' });
   }
+
+  useEffect(() => {
+    if (movie?.mediaType === '综艺' && movie.progress) {
+      if (movie.progress.segments) {
+        setLocalSegs([...movie.progress.segments]);
+      } else {
+        // 兼容没有 segments 字段的旧综艺数据
+        setLocalSegs(Array(movie.progress.totalEpisodes || 1).fill(''));
+      }
+    }
+  }, [movie?.mediaType, movie?.progress?.segments, movie?.progress?.totalEpisodes]);
 
   useEffect(() => {
     if (id) loadMovie();
@@ -413,12 +426,8 @@ export default function MovieDetail() {
     ? Math.round(movie.progress.episode / movie.progress.totalEpisodes * 100)
     : 0;
 
-  const subtitle = [movie.releaseDate?.substring(0, 4), movie.director, movie.mediaType].filter(Boolean).join(' · ');
-
   return (
     <div>
-      <Header title={movie.title} subtitle={subtitle} showAdd={false} />
-
       {/* Back button */}
       <button
         onClick={() => navigate(-1)}
@@ -445,9 +454,18 @@ export default function MovieDetail() {
 
         {/* Info */}
         <div className="detail-info">
-          {/* Original title */}
+          {/* Title + actions */}
+          <div className="flex items-baseline gap-3 mb-6">
+            <p className="detail-original-title !mb-0">{movie.title}</p>
+            <button onClick={() => navigate(`/movie/${id}/edit`)} className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1" title="编辑" aria-label="编辑">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+          </div>
           {movie.titleOriginal && (
-            <p className="detail-original-title">{movie.titleOriginal}</p>
+            <p className="text-text-muted text-sm -mt-2 mb-6">{movie.titleOriginal}</p>
           )}
 
           {/* Status switcher */}
@@ -482,10 +500,12 @@ export default function MovieDetail() {
 
           {/* Meta grid */}
           <div className="detail-meta-grid">
-            <div className="meta-item">
-              <span className="meta-label">导演</span>
-              <span className="meta-value">{movie.director}</span>
-            </div>
+            {movie.director && (
+              <div className="meta-item">
+                <span className="meta-label">导演</span>
+                <span className="meta-value">{movie.director}</span>
+              </div>
+            )}
             {movie.cast && movie.cast.length > 0 && (
               <div className="meta-item relative" ref={castRef}>
                 <span className="meta-label">主演</span>
@@ -512,45 +532,40 @@ export default function MovieDetail() {
                 )}
               </div>
             )}
-            <div className="meta-item">
-              <span className="meta-label">{movie.progress ? '首播' : '上映'}</span>
-              <span className="meta-value">{movie.releaseDate}</span>
-            </div>
+            {movie.releaseDate && (
+              <div className="meta-item">
+                <span className="meta-label">{movie.progress ? '首播' : '上映'}</span>
+                <span className="meta-value">{movie.releaseDate}</span>
+              </div>
+            )}
             {movie.progress?.totalEpisodes ? (
               <div className="meta-item">
                 <span className="meta-label">集数</span>
                 <span className="meta-value">共{movie.progress.totalEpisodes}集</span>
               </div>
-            ) : (
+            ) : movie.runtime > 0 ? (
               <div className="meta-item">
                 <span className="meta-label">片长</span>
                 <span className="meta-value">{movie.runtime}分钟</span>
               </div>
+            ) : null}
+            {movie.country && (
+              <div className="meta-item">
+                <span className="meta-label">国家</span>
+                <span className="meta-value">{movie.country}</span>
+              </div>
             )}
-            <div className="meta-item">
-              <span className="meta-label">国家</span>
-              <span className="meta-value">{movie.country}</span>
-            </div>
-            <div className="meta-item">
-              <span className="meta-label">类型</span>
-              <span className="meta-value">
-                {[...movie.genre, ...movie.tags].join(' / ')}
-              </span>
-            </div>
+            {[...movie.genre, ...movie.tags].length > 0 && (
+              <div className="meta-item">
+                <span className="meta-label">类型</span>
+                <span className="meta-value">
+                  {[...movie.genre, ...movie.tags].join(' / ')}
+                </span>
+              </div>
+            )}
           </div>
 
-          {/* Actions */}
-          <div className="detail-actions">
-            <button onClick={() => { setEditingEntryId(null); setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' }); setShowAddDiary(true); }} className="btn btn-primary">
-              添加记录
-            </button>
-            <button onClick={() => navigate(`/movie/${id}/edit`)} className="btn btn-secondary">
-              编辑
-            </button>
-            <button onClick={() => setShowDeleteConfirm(true)} className="btn btn-ghost btn-sm text-text-muted" title="删除" aria-label="删除影视">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-            </button>
-          </div>
+
         </div>
       </div>
 
@@ -777,8 +792,75 @@ export default function MovieDetail() {
         </div>
       )}
 
-      {/* Progress Card */}
-      {movie.progress?.totalEpisodes && (
+      {/* Progress Card — 综艺：自定义标签块 */}
+      {movie.mediaType === '综艺' && localSegs && (() => {
+        const segs = localSegs;
+        const filled = segs.filter(s => s.trim()).length;
+        const saveSegs = async (newSegs: string[]) => {
+          const updated = await api.movie.update(id!, {
+            ...movie,
+            progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length },
+          });
+          setMovie(updated);
+        };
+        return (
+          <div className="stat-card-contained mt-9">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-text-primary">追剧进度</span>
+                <span className="text-xs text-text-muted">{filled}/{segs.length} 已看</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {segs.map((label, i) => (
+                <div key={i} className="relative group">
+                  <input
+                    type="text"
+                    value={label}
+                    onChange={(e) => {
+                      const newSegs = [...segs];
+                      newSegs[i] = e.target.value;
+                      setLocalSegs(newSegs);
+                    }}
+                    onBlur={(e) => {
+                      const val = e.target.value;
+                      if (val !== (movie.progress!.segments?.[i] || '')) {
+                        const newSegs = [...localSegsRef.current!];
+                        newSegs[i] = val;
+                        void saveSegs(newSegs);
+                      }
+                    }}
+                    className={`min-w-[48px] px-3.5 h-7 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded transition-colors ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border text-text-muted'}`}
+                    size={Math.max(2, label.length || 1)}
+                    placeholder={`#${i + 1}`}
+                  />
+                  <button
+                    onClick={() => {
+                      const newSegs = segs.filter((_, j) => j !== i);
+                      if (newSegs.length === 0) newSegs.push('');
+                      setLocalSegs(newSegs);
+                      void saveSegs(newSegs);
+                    }}
+                    className={`absolute top-0 right-0.5 text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent leading-none ${label.trim() ? 'text-white' : 'text-[#e53e3e]'}`}
+                  >×</button>
+                </div>
+              ))}
+              <button
+                onClick={() => {
+                  const newSegs = [...segs, ''];
+                  setLocalSegs(newSegs);
+                  void saveSegs(newSegs);
+                }}
+                className="w-7 h-7 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent transition-colors flex items-center justify-center text-sm bg-transparent cursor-pointer"
+                title="添加条目"
+              >+</button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Progress Card — 剧集：分段进度条 */}
+      {movie.mediaType !== '综艺' && movie.progress?.totalEpisodes ? (
         <div className="stat-card-contained mt-9">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -790,9 +872,17 @@ export default function MovieDetail() {
             </span>
           </div>
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs text-text-muted w-10">总进度</span>
-            <div className="stat-bar-bg flex-1" style={{ height: 18 }}><div className="stat-bar-fill" style={{width: `${progressPercent}%`}} /></div>
-            <span className="text-xs text-text-secondary font-semibold w-8 text-right">{progressPercent}%</span>
+            <span className="text-xs text-text-muted w-10 flex-shrink-0">进度</span>
+            <div className="flex flex-1 gap-[3px]">
+              {Array.from({ length: movie.progress.totalEpisodes }, (_, i) => (
+                <div
+                  key={i}
+                  className={`flex-1 rounded-sm transition-colors duration-200 ${i < movie.progress!.episode ? 'bg-accent' : 'bg-border'}`}
+                  style={{ height: 9 }}
+                />
+              ))}
+            </div>
+            <span className="text-xs text-text-secondary font-semibold w-8 text-right flex-shrink-0">{progressPercent}%</span>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={() => setShowProgress(true)} className="btn btn-secondary btn-sm">
@@ -803,7 +893,7 @@ export default function MovieDetail() {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Diary entries */}
       <div className="diary-section mt-9">
@@ -892,7 +982,7 @@ export default function MovieDetail() {
       </div>
 
       {/* Add / Edit Diary Modal */}
-      <Modal open={showAddDiary} onClose={() => { setShowAddDiary(false); }} title={editingEntryId ? '编辑观影记录' : '添加观影记录'} hideClose>
+      <Modal open={showAddDiary} onClose={() => { setShowAddDiary(false); }} title={editingEntryId ? '编辑观影记录' : '添加观影记录'}>
         <div className="flex flex-col gap-4">
           <div>
             <label className="form-label">观看日期</label>
@@ -917,7 +1007,7 @@ export default function MovieDetail() {
       </Modal>
 
       {/* Update Progress Modal */}
-      <Modal open={showProgress} onClose={() => setShowProgress(false)} title="更新追剧进度" width="380px" hideClose>
+      <Modal open={showProgress} onClose={() => setShowProgress(false)} title="更新追剧进度" width="380px">
         <div className="flex flex-col gap-4">
           <div>
             <label className="form-label">当前集号</label>
@@ -956,7 +1046,7 @@ export default function MovieDetail() {
       />
 
       {/* Delete Confirm */}
-      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="确认删除" width="400px" hideClose>
+      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="确认删除" width="400px">
         <p className="text-text-secondary text-sm mb-5">确定要删除「{movie.title}」吗？此操作不可撤销。</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-ghost">取消</button>
@@ -965,7 +1055,7 @@ export default function MovieDetail() {
       </Modal>
 
       {/* Delete Diary Entry Confirm */}
-      <Modal open={Boolean(deletingEntryId)} onClose={() => setDeletingEntryId(null)} title="删除观影记录" width="400px" hideClose>
+      <Modal open={Boolean(deletingEntryId)} onClose={() => setDeletingEntryId(null)} title="删除观影记录" width="400px">
         <p className="text-text-secondary text-sm mb-5">确定要删除这条观影记录吗？</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setDeletingEntryId(null)} className="btn btn-ghost">取消</button>
