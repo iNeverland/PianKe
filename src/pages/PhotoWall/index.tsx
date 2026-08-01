@@ -42,7 +42,7 @@ function screenshotOrder(filename: string): number {
 
 function sortScreenshotsNewestFirst(screenshots: ScreenshotInfo[]): ScreenshotInfo[] {
   return [...screenshots].sort((a, b) => {
-    const bySequence = screenshotOrder(b.filename) - screenshotOrder(a.filename);
+    const bySequence = screenshotOrder(a.filename) - screenshotOrder(b.filename);
     return bySequence || b.filename.localeCompare(a.filename);
   });
 }
@@ -151,6 +151,7 @@ function PhotoWallGroup({ movie, initial, wallWidth, onPreview }: { movie: WallM
     <section className="photo-wall-group" data-photo-wall-initial={initial}>
       <div className="photo-wall-group-heading">
         <h3 className="photo-wall-movie-title">{movie.title}</h3>
+        <div className="photo-wall-divider" />
         {movie.screenshotCount > 0 && <span>{movie.screenshotCount} 张截图</span>}
       </div>
       <div className="photo-wall-grid">

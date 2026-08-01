@@ -488,11 +488,6 @@ textarea,
               filter 0.3s ease;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1));
 }
-.sidebar-logo:hover {
-  transform: scale(1.08);
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.18));
-}
-
 /* ═══ 分隔线 — 适配玻璃背景 ═══ */
 .sidebar-divider {
   width: 28px;
@@ -682,6 +677,7 @@ textarea,
   flex: 1;
   height: 100%;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 64px 56px 48px;
   animation: fadeInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -895,7 +891,7 @@ textarea,
 
 .stat-value {
   font-family: var(--font-number);
-  font-size: 2.4rem;
+  font-size: 2rem;
   font-weight: 600;
   color: var(--text-primary);
   line-height: 1;
@@ -1431,7 +1427,7 @@ textarea,
   top: 4px;
   bottom: 0;
   width: 2px;
-  background: rgba(239, 120, 0, 0.18);
+  background: var(--border);
 }
 
 .diary-date-header {
@@ -1451,8 +1447,7 @@ textarea,
 .diary-date-dot {
   width: 10px;
   height: 10px;
-  background: var(--accent);
-  border: 2px solid var(--bg-primary);
+  background: var(--text-muted);
   border-radius: 50%;
   flex-shrink: 0;
   margin-left: 5px;
@@ -1461,11 +1456,6 @@ textarea,
   transition: border-color 0.25s ease, background 0.25s ease;
 }
 
-/* 有观影记录的日期，圆点更突出 */
-.diary-date-header:has(+ div .timeline-item) .diary-date-dot {
-  background: var(--accent);
-  border-color: var(--accent);
-}
 
 .diary-date-text {
   font-family: var(--font-display);
@@ -1894,14 +1884,19 @@ select.form-input {
 .photo-wall-index button:hover, .photo-wall-index button.active { color: var(--accent); transform: scale(1.16); }
 .photo-wall-group { content-visibility: auto; contain-intrinsic-size: auto 430px; }
 .photo-wall-group-heading {
-  display: flex; align-items: baseline; gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   margin-bottom: 14px; scroll-margin-top: 72px;
 }
 .photo-wall-movie-title {
   margin: 0; color: var(--text-primary);
-  font-family: var(--font-display); font-size: 1.08rem; font-weight: 700;
+  font-family: var(--font-display); font-size: 1.18rem; font-weight: 700;
+  white-space: nowrap; flex-shrink: 0;
 }
-.photo-wall-group-heading span { color: var(--text-muted); font-size: 0.72rem; }
+.photo-wall-divider {
+  flex: 1; min-width: 20px; height: 0;
+  border-top: 1px solid var(--border);
+}
+.photo-wall-group-heading span { color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; flex-shrink: 0; }
 .photo-wall-grid {
   display: flex; flex-wrap: wrap; align-items: flex-start;
   gap: 12px;

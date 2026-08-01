@@ -160,7 +160,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
         />
       )}
 
-      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="确认删除" width="400px" hideClose>
+      <Modal open={showDeleteConfirm} onClose={() => setShowDeleteConfirm(false)} title="确认删除" width="400px">
         <p className="text-text-secondary text-sm mb-5">确定要删除「{movie.title}」吗？此操作不可撤销。</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-ghost">取消</button>

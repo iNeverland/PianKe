@@ -440,6 +440,7 @@ export function searchMovies(query: string, filters?: SearchFilters): MovieSumma
           m.title.toLowerCase().includes(q) ||
           (m.titleOriginal && m.titleOriginal.toLowerCase().includes(q)) ||
           m.director.toLowerCase().includes(q) ||
+          m.country.toLowerCase().includes(q) ||
           m.cast.some((c) => c.toLowerCase().includes(q)) ||
           m.releaseDate.includes(q) ||
           m.genre.some((g) => g.toLowerCase().includes(q)) ||

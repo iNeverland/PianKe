@@ -37,7 +37,7 @@ export default function FinishWatchingModal({ open, movieTitle, onClose, onCompl
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="看完了？" width="420px" hideClose>
+    <Modal open={open} onClose={onClose} title="看完了？" width="420px">
       <div className="flex flex-col gap-4">
         <p className="text-sm text-text-secondary leading-relaxed">
           「{movieTitle}」已到最后一集。写下此刻的感受，或仅将它标记为已看完。

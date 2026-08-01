@@ -548,8 +548,7 @@ export default function Diary() {
         onClose={() => setDeletingDiary(null)}
         title="删除观影记录"
         width="400px"
-        hideClose
-      >
+             >
         <p className="text-text-secondary text-sm mb-5">
           确定要删除「{deletingDiary?.movieTitle}」的这条观影记录吗？
         </p>

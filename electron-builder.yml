@@ -37,10 +37,10 @@ fileAssociations:
     description: PianKe 影视资源库
     role: Editor
 nsis:
-  oneClick: false
+  oneClick: true
   perMachine: false
   allowToChangeInstallationDirectory: false
-  createDesktopShortcut: false
+  createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: PianKe
   installerSidebar: resources/installer-sidebar.bmp

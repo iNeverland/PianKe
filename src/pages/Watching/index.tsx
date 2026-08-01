@@ -184,7 +184,7 @@ export default function Watching() {
         </div>
       )}
 
-      <Modal open={Boolean(jumpMovie)} onClose={() => setJumpMovie(null)} title="跳至指定集数" width="360px" hideClose>
+      <Modal open={Boolean(jumpMovie)} onClose={() => setJumpMovie(null)} title="跳至指定集数" width="360px">
         <div className="flex flex-col gap-4">
           <div>
             <label className="form-label">目标集数</label>

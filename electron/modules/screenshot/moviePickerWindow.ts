@@ -31,7 +31,7 @@ function getPickerHtml(): string {
     *{box-sizing:border-box}
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:"Microsoft YaHei",Arial,sans-serif;color:#fff}
     body{display:flex;align-items:flex-end;justify-content:center;padding:0 18px 0}
-    .panel{width:100%;height:220px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.12);border-radius:14px;box-shadow:0 18px 54px rgba(0,0,0,.36);padding:10px 16px}
+    .panel{width:100%;height:220px;background:rgba(18,18,18,.94);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:10px 16px}
     .top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
     .title-block{display:flex;flex-direction:column;gap:3px;min-width:0}
     .tools{display:flex;align-items:center;gap:8px;flex:0 0 auto}
