@@ -126,11 +126,11 @@ export default function Welcome({ onLibraryOpen }: WelcomeProps) {
             <div className="create-form-actions">
               <button
                 onClick={() => { setShowCreate(false); setCreateName(''); }}
-                className="btn-secondary flex-1"
+                className="btn btn-secondary flex-1"
               >
                 取消
               </button>
-              <button onClick={handleCreate} className="btn-primary flex-1">
+              <button onClick={handleCreate} className="btn btn-primary flex-1">
                 选择位置并创建
               </button>
             </div>

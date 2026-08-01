@@ -25,7 +25,8 @@ export const ProgressSchema = z.preprocess((val: any) => {
   }
   return val;
 }, z.object({
-  episode: z.number().int().positive(),
+  // 多集影视允许为 0，表示尚未开始观看或已重置进度。
+  episode: z.number().int().nonnegative(),
   totalEpisodes: z.number().int().positive(),
 }));
 

@@ -270,7 +270,7 @@ export default function Home() {
             <div className="sort-menu !w-[420px] !p-4">
               <div className="mb-3">
                 <div className="text-xs text-text-muted mb-2 font-medium">类型</div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   {TYPE_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
@@ -284,7 +284,7 @@ export default function Home() {
               </div>
               <div className="border-t border-border pt-3 mb-3">
                 <div className="text-xs text-text-muted mb-2 font-medium">状态</div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   {STATUS_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
@@ -298,7 +298,7 @@ export default function Home() {
               </div>
               <div className="border-t border-border pt-3">
                 <div className="text-xs text-text-muted mb-2 font-medium">个人评分</div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   {RATING_OPTIONS.map(opt => (
                     <button
                       key={opt.value}

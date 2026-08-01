@@ -16,6 +16,10 @@ const Watchlist = lazy(() => import('./pages/Watchlist'));
 const Stats = lazy(() => import('./pages/Stats'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Watching = lazy(() => import('./pages/Watching'));
+const PhotoWall = lazy(() => import('./pages/PhotoWall'));
+
+// 仅开发环境的照片墙视觉预览，不会读取或写入用户的影视库。
+const isPhotoWallPreview = import.meta.env.DEV && window.location.hash.startsWith('#/photos?preview=1');
 
 const PageLoader = () => (
   <div className="flex items-center justify-center py-20">
@@ -24,9 +28,9 @@ const PageLoader = () => (
 );
 
 export default function App() {
-  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryLoaded, setLibraryLoaded] = useState(isPhotoWallPreview);
   const [libraryName, setLibraryName] = useState<string>('');
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(!isPhotoWallPreview);
 
   // 初始化主题 + 标题栏颜色
   useEffect(() => {
@@ -115,7 +119,6 @@ export default function App() {
         const movieId = match[1];
         window.dispatchEvent(new CustomEvent('screenshot:capture', { detail: { movieId } }));
       } else {
-        window.electronAPI?.showScreenToast?.('请选择影片');
         window.electronAPI.getPrimaryScreenSnapshot()
           .then((dataUrl) => {
             if (!dataUrl) {
@@ -205,6 +208,7 @@ export default function App() {
           <Route path="/diary" element={<Suspense fallback={<PageLoader />}><Diary /></Suspense>} />
           <Route path="/watchlist" element={<Suspense fallback={<PageLoader />}><Watchlist /></Suspense>} />
           <Route path="/stats" element={<Suspense fallback={<PageLoader />}><Stats /></Suspense>} />
+          <Route path="/photos" element={<Suspense fallback={<PageLoader />}><PhotoWall /></Suspense>} />
           <Route path="/settings" element={<Suspense fallback={<PageLoader />}><Settings /></Suspense>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

@@ -164,7 +164,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
         <p className="text-text-secondary text-sm mb-5">确定要删除「{movie.title}」吗？此操作不可撤销。</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-ghost">取消</button>
-          <button onClick={executeDelete} className="btn btn-danger btn-sm">删除</button>
+          <button onClick={executeDelete} className="btn btn-danger">删除</button>
         </div>
       </Modal>
     </>

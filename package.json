@@ -1,6 +1,6 @@
 {
   "name": "pianke",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Personal cinema journal - desktop app",
   "main": "dist-electron/main.js",
@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
-    "sharp": "^0.35.1"
+    "sharp": "^0.35.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@fontsource/dm-sans": "^5.2.8",

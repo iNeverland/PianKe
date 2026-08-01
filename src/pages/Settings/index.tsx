@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
-import { getLocalDateStr } from '@shared/utils/date';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import { getShortcutConfig, getShortcutKey, saveShortcutConfig, toDisplayText, toAccelerator, getDefaultConfig, type ShortcutConfig } from '@/hooks/useScreenshotShortcut';
@@ -19,7 +18,7 @@ export default function Settings() {
   const [showCreate, setShowCreate] = useState(false);
   const [createName, setCreateName] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const previousShortcutRef = useRef<ShortcutConfig | null>(null);
 
   useEffect(() => {
@@ -174,52 +173,18 @@ export default function Settings() {
     }
   }
 
-  async function handleExportCsv() {
+  async function handleExportExcel() {
+    if (exportingExcel) return;
+    setExportingExcel(true);
     try {
-      const movies = await api.movie.exportAll();
-      if (!movies || movies.length === 0) {
-        showToast('暂无影视数据可导出');
-        return;
+      const result = await api.movie.exportExcel();
+      if (result) {
+        showToast(`Excel 已导出（${result.movieCount} 部影视，${result.diaryCount} 条日记）`, 5000);
       }
-
-      const headers = ['标题', '原始标题', '类型', '状态', '导演', '上映日期', '国家', '类型标签', '自定义标签', '片长(分钟)', '简介', '公众评分', '添加时间'];
-      const rows = movies.map((m: any) => [
-        csvEscape(m.title || ''),
-        csvEscape(m.titleOriginal || ''),
-        m.mediaType || '',
-        m.status || '',
-        csvEscape(m.director || ''),
-        m.releaseDate || '',
-        csvEscape(m.country || ''),
-        (m.genre || []).join('/'),
-        (m.tags || []).join('/'),
-        m.runtime || '',
-        csvEscape(m.synopsis || ''),
-        m.rating ?? '',
-        m.createdAt ? m.createdAt.split('T')[0] : '',
-      ]);
-
-      const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `film-log-export-${getLocalDateStr()}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-      showToast('导出成功');
     } catch (err: any) {
-      showToast(err.message || '导出失败');
-    }
-  }
-
-  async function handleCreateFullBackup() {
-    try {
-      const result = await api.library.createBackup();
-      if (!result) return;
-      showToast(`完整备份已创建（${result.movieCount} 部影视）`, 5000);
-    } catch (err: any) {
-      showToast(err.message || '完整备份失败');
+      showToast(err.message || 'Excel 导出失败');
+    } finally {
+      setExportingExcel(false);
     }
   }
 
@@ -240,37 +205,6 @@ export default function Settings() {
       showToast('检查更新失败，请稍后重试');
     } finally {
       setCheckingUpdate(false);
-    }
-  }
-
-  function csvEscape(val: string): string {
-    if (val.includes(',') || val.includes('"') || val.includes('\n')) {
-      return `"${val.replace(/"/g, '""')}"`;
-    }
-    return val;
-  }
-
-  async function handleImportCsv() {
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      showToast('请选择 CSV 文件');
-      return;
-    }
-
-    try {
-      const csvText = await file.text();
-      const result = await api.movie.importCsv(csvText);
-      const msg = `导入完成：成功 ${result.imported} 条`;
-      if (result.errors.length > 0) {
-        showToast(`${msg}，${result.errors.length} 条失败（${result.errors.slice(0, 3).join('；')}${result.errors.length > 3 ? '...' : ''}）`, 8000);
-      } else {
-        showToast(msg);
-      }
-    } catch (err: any) {
-      showToast(err.message || '导入失败');
-    } finally {
-      // 重置 file input 以便重复选择同一文件
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
@@ -371,7 +305,7 @@ export default function Settings() {
             <div className="settings-row-desc">
               {capturing
                 ? '请按下新的快捷键组合...（按 ESC 取消）'
-                : '在影视详情页使用，截取屏幕画面并自动保存到照片墙'}
+                : '截取屏幕画面并保存至照片墙'}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -424,36 +358,11 @@ export default function Settings() {
         <div className="settings-section-title">数据管理</div>
         <div className="settings-row">
           <div>
-            <div className="settings-row-label">完整备份</div>
-            <div className="settings-row-desc">复制整个资源库，包含日记、海报与截图；备份文件夹可通过“切换库”直接打开</div>
+            <div className="settings-row-label">导出 Excel</div>
+            <div className="settings-row-desc">导出影视清单与观影日记，可选择 .xlsx 或 .xls；不嵌入海报、截图等图片</div>
           </div>
-          <button className="btn btn-primary btn-sm" onClick={handleCreateFullBackup}>
-            创建备份
-          </button>
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">导入 CSV</div>
-            <div className="settings-row-desc">从 CSV 文件批量导入影视清单（不包含日记、海报与截图）</div>
-          </div>
-          <input
-            type="file"
-            ref={fileInputRef}
-            accept=".csv"
-            className="hidden"
-            onChange={handleImportCsv}
-          />
-          <button className="btn btn-secondary btn-sm" onClick={() => fileInputRef.current?.click()}>
-            导入
-          </button>
-        </div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">导出为 CSV</div>
-            <div className="settings-row-desc">导出影视清单，便于在表格软件中查看或交换</div>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={handleExportCsv}>
-            导出
+          <button className="btn btn-primary btn-sm" onClick={handleExportExcel} disabled={exportingExcel}>
+            {exportingExcel ? '导出中…' : '导出'}
           </button>
         </div>
       </div>

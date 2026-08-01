@@ -42,6 +42,7 @@ export default function MovieForm() {
   const [posterExt, setPosterExt] = useState<string>('.jpg');
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [existingPosterUrl, setExistingPosterUrl] = useState<string | null>(null);
+  const [isPosterDragging, setIsPosterDragging] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialForm, setInitialForm] = useState<string>('');
@@ -120,13 +121,17 @@ export default function MovieForm() {
     navigate(-1);
   }
 
-  function handlePosterSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function handlePosterFile(file: File) {
+    if (!file.type.startsWith('image/')) {
+      showToast('请选择图片文件');
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      const ext = file.name.includes('.') ? `.${file.name.split('.').pop()?.toLowerCase()}` : '.jpg';
+      const ext = file.name.includes('.')
+        ? `.${file.name.split('.').pop()?.toLowerCase()}`
+        : ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[file.type] || '.jpg');
       if (posterPreview) URL.revokeObjectURL(posterPreview);
       setPosterBase64(dataUrl);
       setPosterExt(ext);
@@ -136,6 +141,37 @@ export default function MovieForm() {
     reader.onerror = () => showToast('读取图片失败，请重试');
     reader.readAsDataURL(file);
   }
+
+  function handlePosterSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handlePosterFile(file);
+    // 允许再次选择同一张图片。
+    e.target.value = '';
+  }
+
+  function handlePosterDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsPosterDragging(false);
+    const file = Array.from(e.dataTransfer.files).find((item) => item.type.startsWith('image/'));
+    if (file) handlePosterFile(file);
+    else showToast('请拖入图片文件');
+  }
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.matches('input, textarea, [contenteditable="true"]')) return;
+
+      const file = Array.from(e.clipboardData?.files || []).find((item) => item.type.startsWith('image/'));
+      if (!file) return;
+      e.preventDefault();
+      handlePosterFile(file);
+      showToast('已粘贴海报');
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
 
   function handleRemovePoster() {
     if (posterPreview) URL.revokeObjectURL(posterPreview);
@@ -213,8 +249,14 @@ export default function MovieForm() {
         {/* 左栏：海报 */}
         <div className="form-poster-col">
           <div
-            className={`form-poster-zone${shownPoster ? ' has-poster' : ''}`}
+            className={`form-poster-zone${shownPoster ? ' has-poster' : ''}${isPosterDragging ? ' is-dragging' : ''}`}
             onClick={() => !shownPoster && fileInputRef.current?.click()}
+            onDragEnter={(e) => { e.preventDefault(); setIsPosterDragging(true); }}
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsPosterDragging(false);
+            }}
+            onDrop={handlePosterDrop}
           >
             {shownPoster ? (
               <img src={shownPoster} alt="海报预览" className="form-poster-img" />
@@ -225,8 +267,7 @@ export default function MovieForm() {
                   <circle cx="8.5" cy="8.5" r="1.5"/>
                   <polyline points="21 15 16 10 5 21"/>
                 </svg>
-                <span>点击上传海报</span>
-                <span className="form-poster-hint">支持 JPG / PNG / WebP</span>
+                <span>{isPosterDragging ? '松开以上传海报' : '点击或拖入图片上传'}</span>
               </div>
             )}
           </div>
@@ -242,22 +283,22 @@ export default function MovieForm() {
         {/* 右栏：表单字段 */}
         <div className="form-fields-col">
           {/* 基本信息 */}
-          <div className="form-section-card">
+          <div className="form-section-card basic-info-card">
             <div className="form-section-title">基本信息</div>
             <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-title">标题 *</label>
-                <input id="form-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="form-input" placeholder="肖申克的救赎" />
+                <input id="form-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="form-input" placeholder="星际穿越" />
               </div>
               <div>
                 <label className="form-label" htmlFor="form-title-original">原始标题</label>
-                <input id="form-title-original" type="text" value={form.titleOriginal} onChange={(e) => setForm({ ...form, titleOriginal: e.target.value })} className="form-input" placeholder="The Shawshank Redemption" />
+                <input id="form-title-original" type="text" value={form.titleOriginal} onChange={(e) => setForm({ ...form, titleOriginal: e.target.value })} className="form-input" placeholder="Interstellar" />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-director">导演 *</label>
-                <input id="form-director" type="text" value={form.director} onChange={(e) => setForm({ ...form, director: e.target.value })} className="form-input" placeholder="弗兰克·德拉邦特" />
+                <input id="form-director" type="text" value={form.director} onChange={(e) => setForm({ ...form, director: e.target.value })} className="form-input" placeholder="克里斯托弗·诺兰" />
               </div>
               <div>
                 <label className="form-label">上映日期</label>
@@ -289,7 +330,7 @@ export default function MovieForm() {
                   value={form.progress ? '多集' : '单集'}
                   onChange={(v) => {
                     const isMulti = v === '多集';
-                    setForm({ ...form, progress: isMulti ? (form.progress || { episode: 1, totalEpisodes: 1 }) : null });
+                    setForm({ ...form, progress: isMulti ? (form.progress || { episode: form.status === '想看' ? 0 : 1, totalEpisodes: 1 }) : null });
                   }}
                   options={[
                     { label: '单集', value: '单集' },
@@ -301,7 +342,14 @@ export default function MovieForm() {
                 <label className="form-label">状态</label>
                 <CustomSelect
                   value={form.status}
-                  onChange={(v) => setForm({ ...form, status: v as WatchStatus })}
+                  onChange={(v) => {
+                    const status = v as WatchStatus;
+                    setForm({
+                      ...form,
+                      status,
+                      progress: status === '想看' && form.progress ? { ...form.progress, episode: 0 } : form.progress,
+                    });
+                  }}
                   options={[
                     { label: '已看完', value: '已看完' },
                     { label: '追剧中', value: '在看' },
@@ -313,16 +361,16 @@ export default function MovieForm() {
             <div className="grid grid-cols-3 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-country">国家</label>
-                <input id="form-country" type="text" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="form-input" placeholder="美国" />
+                <input id="form-country" type="text" value={form.country} onChange={(e) => setForm({ ...form, country: e.target.value })} className="form-input" placeholder="美国 / 英国 / 加拿大" />
               </div>
               <div>
                 <label className="form-label" htmlFor="form-runtime">片长</label>
-                <input id="form-runtime" type="number" value={form.runtime || ''} onChange={(e) => setForm({ ...form, runtime: Number(e.target.value) })} className="form-input" placeholder="142 分钟" />
+                <input id="form-runtime" type="number" value={form.runtime || ''} onChange={(e) => setForm({ ...form, runtime: Number(e.target.value) })} className="form-input" placeholder="169分钟" />
               </div>
               <div>
                 <label className="form-label" htmlFor="form-rating">评分</label>
                 <div className="rating-input-wrap">
-                  <input id="form-rating" type="number" step="0.1" min="0" max="10" value={form.rating || ''} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} className="form-input flex-1" placeholder="9.7" />
+                  <input id="form-rating" type="number" step="0.1" min="0" max="10" value={form.rating || ''} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} className="form-input flex-1" placeholder="9.4" />
                   {form.rating > 0 && (
                     <span className="rating-stars-preview" title={`${form.rating} 分`}>
                       {(() => {
@@ -358,8 +406,8 @@ export default function MovieForm() {
                   </div>
                   <div>
                     <label className="form-label">当前集号</label>
-                    <input type="number" min="1" max={p.totalEpisodes} value={p.episode} onChange={(e) => {
-                      const ep = Math.min(p.totalEpisodes, Math.max(1, Number(e.target.value) || 1));
+                    <input type="number" min="0" max={p.totalEpisodes} value={p.episode} onChange={(e) => {
+                      const ep = Math.min(p.totalEpisodes, Math.max(0, Number(e.target.value) || 0));
                       setForm({ ...form, progress: { ...p, episode: ep } });
                     }} className="form-input" />
                   </div>
@@ -390,7 +438,7 @@ export default function MovieForm() {
               <label className="form-label">自定义标签</label>
               <div className="flex gap-2">
                 <input type="text" value={tagInput} onChange={(e) => setTagInput(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }} placeholder="输入标签后回车添加" className="form-tag-input" />
-                <button type="button" onClick={addTag} className="btn btn-secondary btn-sm">添加</button>
+                <button type="button" onClick={addTag} className="btn btn-secondary btn-sm form-tag-add-btn">添加</button>
               </div>
             </div>
             {form.tags.length > 0 && (

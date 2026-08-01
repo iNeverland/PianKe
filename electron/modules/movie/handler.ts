@@ -1,4 +1,5 @@
-import { ipcMain } from 'electron';
+import path from 'path';
+import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/types/index.js';
 import * as service from './service.js';
 
@@ -47,12 +48,19 @@ export function registerMovieHandlers(): void {
     return service.getPosterBase64(id, thumb);
   });
 
-  ipcMain.handle(IPC_CHANNELS.MOVIE_EXPORT_ALL, async () => {
-    return service.getAllFullMovies();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.MOVIE_IMPORT_CSV, async (_event, csvText: string) => {
-    return service.importMoviesFromCsv(csvText);
+  ipcMain.handle(IPC_CHANNELS.MOVIE_EXPORT_EXCEL, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
+    const date = new Date().toISOString().slice(0, 10);
+    const result = await dialog.showSaveDialog(win!, {
+      title: '导出影视数据',
+      defaultPath: path.join('PianKe-影视数据-' + date + '.xlsx'),
+      filters: [
+        { name: 'Excel 工作簿', extensions: ['xlsx'] },
+        { name: 'Excel 97-2003 工作簿', extensions: ['xls'] },
+      ],
+    });
+    if (result.canceled || !result.filePath) return null;
+    return service.exportMoviesToExcel(result.filePath);
   });
 
   ipcMain.handle(IPC_CHANNELS.MOVIE_LIST_SCREENSHOTS, async (_event, id: string) => {

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
 import { getMoviesDir, getMovieDir, getMetadataPath, getDiaryPath, getScreenshotsDir } from '../../utils/paths.js';
@@ -278,6 +279,18 @@ export async function updateMovie(
     };
   }
 
+  // 多集影视切换为“想看”代表尚未开始追剧。
+  if (
+    existing.status !== updated.status &&
+    updated.status === '想看' &&
+    updated.progress?.totalEpisodes
+  ) {
+    updated.progress = {
+      ...updated.progress,
+      episode: 0,
+    };
+  }
+
   // 写入文件
   const metadataPath = getMetadataPath(newMovieDir);
   await writeQueue.enqueue(metadataPath, async () => {
@@ -324,145 +337,76 @@ function copyDirSync(src: string, dest: string): void {
   }
 }
 
-// 删除影视
-// 导出全部影视完整数据
-export function getAllFullMovies(): MovieMetadata[] {
-  return dataStore.getAllMovies();
+export interface ExcelExportResult {
+  filePath: string;
+  movieCount: number;
+  diaryCount: number;
 }
 
-/** 解析 CSV 一行，处理引号包裹字段 */
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let i = 0;
-  while (i < line.length) {
-    if (line[i] === '"') {
-      i++;
-      let field = '';
-      while (i < line.length) {
-        if (line[i] === '"') {
-          if (i + 1 < line.length && line[i + 1] === '"') {
-            field += '"';
-            i += 2;
-          } else {
-            i++;
-            break;
-          }
-        } else {
-          field += line[i];
-          i++;
-        }
-      }
-      fields.push(field);
-      if (i < line.length && line[i] === ',') i++;
-    } else {
-      let field = '';
-      while (i < line.length && line[i] !== ',') {
-        field += line[i];
-        i++;
-      }
-      fields.push(field);
-      if (i < line.length && line[i] === ',') i++;
-    }
+/** 导出不含图片二进制的影视数据工作簿。 */
+export function exportMoviesToExcel(filePath: string): ExcelExportResult {
+  const movies = dataStore.getAllMovies();
+  const workbook = XLSX.utils.book_new();
+
+  const movieRows = movies.map((movie) => [
+    movie.id,
+    movie.title,
+    movie.titleOriginal || '',
+    movie.mediaType,
+    movie.status,
+    movie.director,
+    movie.cast.join(' / '),
+    movie.releaseDate,
+    movie.country,
+    movie.genre.join(' / '),
+    movie.tags.join(' / '),
+    movie.runtime,
+    movie.rating,
+    movie.progress?.episode ?? '',
+    movie.progress?.totalEpisodes ?? '',
+    movie.rewatchCount ?? 0,
+    movie.createdAt,
+    movie.synopsis || '',
+  ]);
+  const movieSheet = XLSX.utils.aoa_to_sheet([
+    ['ID', '标题', '原始标题', '类型', '状态', '导演', '主演', '上映日期', '国家', '类型标签', '自定义标签', '片长（分钟）', '公众评分', '当前集数', '总集数', '重看次数', '添加时间', '简介'],
+    ...movieRows,
+  ]);
+  movieSheet['!cols'] = [
+    { wch: 38 }, { wch: 20 }, { wch: 24 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 28 }, { wch: 12 }, { wch: 14 },
+    { wch: 24 }, { wch: 24 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 22 }, { wch: 48 },
+  ];
+  movieSheet['!autofilter'] = { ref: `A1:R${Math.max(movieRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, movieSheet, '影视清单');
+
+  const diaryRows = movies.flatMap((movie) => dataStore.getDiary(movie.id).map((entry) => [
+    movie.id,
+    movie.title,
+    entry.watchDate,
+    entry.watchTime || '',
+    entry.rating,
+    entry.kind || 'manual',
+    entry.review || '',
+    entry.images.length,
+  ]));
+  const diarySheet = XLSX.utils.aoa_to_sheet([
+    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '记录类型', '短评', '关联图片数'],
+    ...diaryRows,
+  ]);
+  diarySheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 60 }, { wch: 12 }];
+  diarySheet['!autofilter'] = { ref: `A1:H${Math.max(diaryRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, diarySheet, '观影日记');
+
+  try {
+    const bookType = path.extname(filePath).toLowerCase() === '.xls' ? 'biff8' : 'xlsx';
+    // 由主进程显式落盘，避免打包后 xlsx.writeFile 的 Node 文件系统适配失效。
+    const fileContent = XLSX.write(workbook, { bookType, type: 'buffer' });
+    fs.writeFileSync(filePath, fileContent);
+    return { filePath, movieCount: movies.length, diaryCount: diaryRows.length };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new AppError(ErrorCode.FILE_WRITE_FAILED, `导出 Excel 文件失败：${reason}`, err);
   }
-  return fields;
-}
-
-/** 解析 CSV 文本为二维数组 */
-function parseCsv(csvText: string): string[][] {
-  // 移除 BOM
-  if (csvText.charCodeAt(0) === 0xFEFF) csvText = csvText.slice(1);
-  // 统一换行符
-  csvText = csvText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = csvText.split('\n').filter((l) => l.trim());
-  return lines.map(parseCsvLine);
-}
-
-/** 从 CSV 导入影视 */
-export async function importMoviesFromCsv(csvText: string): Promise<{ imported: number; errors: string[] }> {
-  const rows = parseCsv(csvText);
-  if (rows.length < 2) {
-    throw new AppError(ErrorCode.IMPORT_FAILED, 'CSV 文件为空或格式不正确');
-  }
-
-  const headers = rows[0];
-  const titleIdx = headers.indexOf('标题');
-  const originalTitleIdx = headers.indexOf('原始标题');
-  const typeIdx = headers.indexOf('类型');
-  const statusIdx = headers.indexOf('状态');
-  const directorIdx = headers.indexOf('导演');
-  const castIdx = headers.indexOf('主演');
-  const dateIdx = headers.indexOf('上映日期');
-  const countryIdx = headers.indexOf('国家');
-  const genreIdx = headers.indexOf('类型标签');
-  const tagsIdx = headers.indexOf('自定义标签');
-  const runtimeIdx = headers.indexOf('片长(分钟)');
-  const synopsisIdx = headers.indexOf('简介');
-  const ratingIdx = headers.indexOf('公众评分');
-
-  if (titleIdx === -1) {
-    throw new AppError(ErrorCode.IMPORT_FAILED, 'CSV 缺少"标题"列');
-  }
-
-  const result = { imported: 0, errors: [] as string[] };
-  const validTypes = ['电影', '剧集', '综艺', '纪录片', '动画'];
-  const validStatuses = ['在看', '已看完', '想看'];
-
-  for (let i = 1; i < rows.length; i++) {
-    const row = rows[i];
-    try {
-      const title = (row[titleIdx] || '').trim();
-      if (!title) {
-        result.errors.push(`第 ${i + 1} 行：标题为空，已跳过`);
-        continue;
-      }
-
-      const mediaType = row[typeIdx]?.trim() || '电影';
-      const finalType = validTypes.includes(mediaType) ? mediaType : '电影';
-
-      const status = row[statusIdx]?.trim() || '已看完';
-      const finalStatus = validStatuses.includes(status) ? status : '已看完';
-
-      let releaseDate = (row[dateIdx] || '').trim();
-      if (releaseDate && /^\d{4}$/.test(releaseDate)) {
-        releaseDate = `${releaseDate}-01-01`;
-      }
-
-      const genreStr = row[genreIdx] || '';
-      const genre = genreStr ? genreStr.split('/').map((s: string) => s.trim()).filter(Boolean) : [];
-
-      const tagsStr = row[tagsIdx] || '';
-      const tags = tagsStr ? tagsStr.split('/').map((s: string) => s.trim()).filter(Boolean) : [];
-
-      const castStr = row[castIdx] || '';
-      const cast = castStr ? castStr.split('/').map((s: string) => s.trim()).filter(Boolean) : [];
-
-      const runtime = parseInt(row[runtimeIdx], 10) || 0;
-      const rating = Math.min(10, Math.max(0, parseFloat(row[ratingIdx]) || 0));
-
-      const data: Record<string, unknown> = {
-        title,
-        titleOriginal: (row[originalTitleIdx] || '').trim() || undefined,
-        mediaType: finalType,
-        director: (row[directorIdx] || '').trim() || '未知',
-        cast,
-        releaseDate: releaseDate || '',
-        country: (row[countryIdx] || '').trim() || '',
-        genre,
-        tags,
-        runtime,
-        synopsis: (row[synopsisIdx] || '').trim() || undefined,
-        rating,
-        status: finalStatus,
-      };
-
-      await createMovie(data);
-      result.imported++;
-    } catch (err: any) {
-      result.errors.push(`第 ${i + 1} 行：${err.message}`);
-    }
-  }
-
-  return result;
 }
 
 export async function deleteMovie(id: string): Promise<void> {
@@ -497,6 +441,7 @@ export function searchMovies(query: string, filters?: SearchFilters): MovieSumma
           (m.titleOriginal && m.titleOriginal.toLowerCase().includes(q)) ||
           m.director.toLowerCase().includes(q) ||
           m.cast.some((c) => c.toLowerCase().includes(q)) ||
+          m.releaseDate.includes(q) ||
           m.genre.some((g) => g.toLowerCase().includes(q)) ||
           m.tags.some((t) => t.toLowerCase().includes(q));
         if (!textMatch) return false;
@@ -549,8 +494,9 @@ export async function updateProgress(
 
   const updatedProgress: Progress = {
     ...movie.progress,
-    episode: Math.min(episode, movie.progress.totalEpisodes),
+    episode: Math.max(0, Math.min(episode, movie.progress.totalEpisodes)),
   };
+  const currentEpisode = updatedProgress.episode;
 
   const updated = {
     ...movie,
@@ -570,7 +516,7 @@ export async function updateProgress(
   const today = getLocalDateStr();
   const now = new Date();
   const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const review = `第${episode}集 · 进度 ${Math.round((episode / movie.progress.totalEpisodes) * 100)}%`;
+  const review = `第${currentEpisode}集 · 进度 ${Math.round((currentEpisode / movie.progress.totalEpisodes) * 100)}%`;
   const diaryEntries = dataStore.getDiary(id);
 
   // 从末尾查找最近的 progress 记录

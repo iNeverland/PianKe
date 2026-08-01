@@ -17,6 +17,11 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/** 国家字段允许以 / 分隔多个国家；同一部影视中的重复国家只计一次。 */
+function splitCountries(country: string): string[] {
+  return [...new Set(country.split(/[／/]/).map((item) => item.trim()).filter(Boolean))];
+}
+
 function getDiaryRatingBucket(rating: number): number | null {
   if (rating <= 0) return null;
 
@@ -52,9 +57,8 @@ export function getDashboard(): StatsDashboard {
       genreCount[genre] = (genreCount[genre] || 0) + 1;
     }
 
-    if (movie.country) {
-      const country = movie.country.trim();
-      if (country) countryCount[country] = (countryCount[country] || 0) + 1;
+    for (const country of splitCountries(movie.country)) {
+      countryCount[country] = (countryCount[country] || 0) + 1;
     }
 
     const entries = allDiaries.get(movie.id) || [];
@@ -223,9 +227,8 @@ export function getByCountry(): { country: string; count: number }[] {
   const movies = getAllMovies();
   const count: Record<string, number> = {};
   for (const movie of movies) {
-    if (movie.country) {
-      const c = movie.country.trim();
-      count[c] = (count[c] || 0) + 1;
+    for (const country of splitCountries(movie.country)) {
+      count[country] = (count[country] || 0) + 1;
     }
   }
   return Object.entries(count)
