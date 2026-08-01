@@ -1,0 +1,49 @@
+appId: com.pianke.app
+productName: PianKe
+directories:
+  buildResources: resources
+  output: release
+files:
+  - dist/**/*
+  - "!dist/win-unpacked"
+  - "!dist/*.exe"
+  - "!dist/*.blockmap"
+  - "!dist/*.yml"
+  - dist-electron/**/*
+  - package.json
+  - "!src/**"
+extraResources:
+  - from: logo/PianKe.svg
+    to: PianKe.svg
+  - from: logo/文件夹.svg
+    to: 文件夹.svg
+win:
+  target: nsis
+  icon: resources/icon.png
+mac:
+  target:
+    - dmg
+    - zip
+  icon: resources/icon.icns
+publish:
+  provider: github
+  owner: iNeverland
+  repo: PianKe
+  vPrefixedTagName: false
+  releaseType: release
+fileAssociations:
+  - ext: pianke
+    name: PianKe Library
+    description: PianKe 影视资源库
+    role: Editor
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: false
+  createStartMenuShortcut: true
+  shortcutName: PianKe
+  installerSidebar: resources/installer-sidebar.bmp
+  uninstallerSidebar: resources/installer-sidebar.bmp
+  uninstallDisplayName: PianKe
+  include: build/installer.nsh

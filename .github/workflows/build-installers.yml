@@ -1,0 +1,54 @@
+name: 构建安装包
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }} 安装包
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            command: npm run electron:build --
+            artifact: PianKe-macOS
+            path: release/*.dmg
+          - name: Windows
+            os: windows-latest
+            command: npm run electron:build:win --
+            artifact: PianKe-Windows
+            path: release/*.exe
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建并发布 Release
+        run: ${{ matrix.command }} --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 上传安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.path }}
+          if-no-files-found: error
+          retention-days: 14
