@@ -2,6 +2,7 @@ import { clipboard, desktopCapturer, globalShortcut, ipcMain, nativeImage, scree
 import { closeCropWindow, getCropData, getCropMovieId, startCropWindow } from './cropWindow.js';
 import { closeMoviePickerWindow, showMoviePickerWindow } from './moviePickerWindow.js';
 import { showScreenToast } from './toast.js';
+import { addScreenshot, listMovies } from '../movie/service.js';
 import type { ScreenshotInfo } from '../../../shared/types/index.js';
 
 type MainWindowGetter = () => BrowserWindow | null;
@@ -146,7 +147,6 @@ async function saveScreenshotToMovie(
   croppedDataUrl: string,
   getMainWindow: MainWindowGetter
 ): Promise<ScreenshotInfo[]> {
-  const { addScreenshot } = await import('../movie/service.js');
   const result = await addScreenshot(movieId, croppedDataUrl, '.png');
   const image = nativeImage.createFromDataURL(croppedDataUrl);
   if (!image.isEmpty()) {
@@ -162,7 +162,6 @@ async function saveScreenshotToMovie(
 }
 
 async function showMoviePicker(baseDir: string): Promise<void> {
-  const { listMovies } = await import('../movie/service.js');
   const movies = listMovies();
 
   if (!movies.length) {

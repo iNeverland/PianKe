@@ -1,20 +1,15 @@
 import fs from 'fs';
 import { dataStore } from '../../store/dataStore.js';
-import { getMovieDir, getDiaryPath } from '../../utils/paths.js';
+import { getMovieDir, getMovieFolderName, getDiaryPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import type { DiaryEntry, DiaryTimelineMonth, DiaryTimelineDay } from '../../../shared/types/index.js';
-import { parseLocalDate } from '../../../shared/utils/date.js';
+import { compareWatchMomentDesc, parseLocalDate } from '../../../shared/utils/date.js';
 
 // 获取某部影视的观影记录（按日期从近到远）
 export function getDiaryByMovie(movieId: string): DiaryEntry[] {
-  const entries = dataStore.getDiary(movieId);
-  return entries.sort((a, b) => {
-    const dateCmp = b.watchDate.localeCompare(a.watchDate);
-    if (dateCmp !== 0) return dateCmp;
-    return (b.watchTime || '').localeCompare(a.watchTime || '');
-  });
+  return [...dataStore.getDiary(movieId)].sort(compareWatchMomentDesc);
 }
 
 // 删除一条自动观影日记
@@ -28,8 +23,8 @@ export async function deleteDiaryEntry(movieId: string, entryId: string): Promis
   }
 
   const filtered = entries.filter((entry) => entry.id !== entryId);
-  const folderName = movie.releaseDate ? `${movie.title} (${movie.releaseDate.split('-')[0]})` : movie.title;
-  const diaryPath = getDiaryPath(getMovieDir(movieId, folderName));
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+  const diaryPath = getDiaryPath(getMovieDir(folderName));
   await writeQueue.enqueue(diaryPath, async () => {
     fs.writeFileSync(diaryPath, JSON.stringify(filtered, null, 2), 'utf-8');
   });
@@ -57,11 +52,7 @@ export function getTimeline(): DiaryTimelineMonth[] {
   }
 
   // 按日期降序，同日期按时分降序
-  allEntries.sort((a, b) => {
-    const dateCmp = b.watchDate.localeCompare(a.watchDate);
-    if (dateCmp !== 0) return dateCmp;
-    return (b.watchTime || '').localeCompare(a.watchTime || '');
-  });
+  allEntries.sort(compareWatchMomentDesc);
 
   // 按月分组
   const months: DiaryTimelineMonth[] = [];

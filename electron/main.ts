@@ -81,8 +81,8 @@ app.whenReady().then(() => {
   createWindow();
   startAutoUpdater();
   mainWindow?.webContents.once('did-finish-load', () => {
-    // 首屏加载完成后只检查一次；后续检查由下次启动或用户手动触发。
-    setTimeout(() => { void checkForUpdates('automatic'); }, 10_000);
+    // 首屏加载完成后立即检查；后续检查由下次启动或用户手动触发。
+    void checkForUpdates('automatic');
   });
 
   const openLibraryPath = process.argv.find(a => a.endsWith('.pianke'));

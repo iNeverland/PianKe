@@ -104,7 +104,8 @@ export function startAutoUpdater(): void {
   }
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
+  // 下载完成后由各平台原生更新器接管安装；同时保留显式重启流程，确保数据先写入。
+  autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
 
   autoUpdater.on('checking-for-update', () => {

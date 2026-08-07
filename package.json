@@ -1,12 +1,14 @@
 {
   "name": "pianke",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "type": "module",
   "description": "Personal cinema journal - desktop app",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "tsc && vite build",
+    "check": "npm run typecheck && vite build",
     "preview": "vite preview",
     "electron:dev": "vite",
     "electron:build": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" && vite build && electron-builder",

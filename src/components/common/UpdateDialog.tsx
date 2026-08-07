@@ -3,7 +3,7 @@ import type { AppUpdateState } from '@shared/types/index';
 import { showToast } from './Toast';
 import Modal from './Modal';
 
-const AUTO_PROMPT_DATE_KEY = 'pianke-auto-update-prompt-date';
+const AUTO_PROMPT_VERSION_KEY = 'pianke-auto-update-prompt-version';
 
 function getLocalDateKey(): string {
   const now = new Date();
@@ -16,9 +16,9 @@ function shouldOpenDialog(state: AppUpdateState): boolean {
   if (state.status !== 'available') return state.status === 'downloading' || state.status === 'downloaded';
   if (state.checkSource === 'manual') return true;
 
-  const today = getLocalDateKey();
-  if (localStorage.getItem(AUTO_PROMPT_DATE_KEY) === today) return false;
-  localStorage.setItem(AUTO_PROMPT_DATE_KEY, today);
+  const promptToken = `${getLocalDateKey()}:${state.version || 'unknown'}`;
+  if (localStorage.getItem(AUTO_PROMPT_VERSION_KEY) === promptToken) return false;
+  localStorage.setItem(AUTO_PROMPT_VERSION_KEY, promptToken);
   return true;
 }
 

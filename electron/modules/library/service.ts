@@ -1,12 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { app } from 'electron';
 import { z } from 'zod';
 import { dataStore } from '../../store/dataStore.js';
 import { setLibraryRoot, getLibraryRoot, getMoviesDir, getWatchRecordsPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
+import { migrateThumbnails } from '../movie/service.js';
 import { LibraryInfoSchema, MovieMetadataSchema, DiaryEntrySchema, WatchRecordSchema } from '../../../shared/schemas/index.js';
 import type { LibraryInfo, MovieSummary, DiaryEntry, WatchRecord } from '../../../shared/types/index.js';
 
@@ -69,9 +70,7 @@ export async function openLibrary(dirPath: string): Promise<LibraryInfo> {
     dataStore.setLoaded();
 
     // 缩略图迁移放到后台异步执行，不阻塞 UI 展示
-    import('../movie/service.js').then(({ migrateThumbnails }) =>
-      migrateThumbnails().catch(err => console.error('[thumbnail] background migration failed:', err))
-    );
+    void migrateThumbnails().catch(err => console.error('[thumbnail] background migration failed:', err));
 
     // 如果需要迁移，同步更新版本号（异步写回不阻塞）
     if (fromVersion < LATEST_VERSION) {
@@ -94,9 +93,8 @@ async function generateFolderIcon(dirPath: string): Promise<void> {
 
     // 生产环境：extraResources 放在 resources/
     const prodPath = path.join(process.resourcesPath || '', '文件夹.svg');
-    // 开发环境：项目根目录
-    const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const devPath = path.join(__dirname, '../logo/文件夹.svg');
+    // 开发环境：单一品牌资源目录
+    const devPath = path.join(app.getAppPath(), 'src/assets/brand/library-folder.svg');
 
     const svgPath = fs.existsSync(prodPath) ? prodPath
       : fs.existsSync(devPath) ? devPath

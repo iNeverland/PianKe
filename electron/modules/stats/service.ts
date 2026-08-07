@@ -1,5 +1,5 @@
 import { dataStore } from '../../store/dataStore.js';
-import type { StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre, StatsByRating, StatsMonthlyTrend, StatsByCountry, MonthSummary, MovieSummary, DiaryEntry } from '../../../shared/types/index.js';
+import type { StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre, StatsByRating, StatsMonthlyTrend, MonthSummary, MovieSummary, DiaryEntry } from '../../../shared/types/index.js';
 
 function getAllMovies() {
   return dataStore.getAllMovies();

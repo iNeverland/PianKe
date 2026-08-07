@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
+import appLogo from '@/assets/brand/PianKe.svg';
 
 const navItems = [
   { path: '/', label: '首页', icon: (
@@ -28,7 +29,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-capsule">
-        <img src="logo/PianKe.svg" alt="PianKe" className="sidebar-logo" />
+        <img src={appLogo} alt="PianKe" className="sidebar-logo" />
         <div className="sidebar-divider" />
         {navItems.map((item) => {
           const isActive = item.path === '/' ? location.pathname === '/' || location.pathname.startsWith('/movie/') : location.pathname === item.path;

@@ -8,7 +8,7 @@ const appVersion = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.j
 
 function getSyncedPreloadContent(): string {
   const typesPath = path.resolve(__dirname, 'shared/types/index.ts');
-  const preloadPath = path.resolve(__dirname, 'electron/preload.cjs');
+  const preloadPath = path.resolve(__dirname, 'electron/preload/main.cjs');
   const typesContent = fs.readFileSync(typesPath, 'utf-8');
   const preloadContent = fs.readFileSync(preloadPath, 'utf-8');
   const match = typesContent.match(/export const IPC_CHANNELS\s*=\s*(\{[\s\S]*?\})\s*as\s*const;/);
@@ -31,15 +31,15 @@ function copyPreloadPlugin(): Plugin {
         fs.mkdirSync(destDir, { recursive: true });
       }
 
-      const files: Array<{ filename: string; content?: string }> = [
-        { filename: 'preload.cjs', content: getSyncedPreloadContent() },
-        { filename: 'crop-preload.cjs' },
-        { filename: 'movie-picker-preload.cjs' },
+      const files: Array<{ source: string; output: string; content?: string }> = [
+        { source: 'main.cjs', output: 'preload.cjs', content: getSyncedPreloadContent() },
+        { source: 'crop.cjs', output: 'crop-preload.cjs' },
+        { source: 'movie-picker.cjs', output: 'movie-picker-preload.cjs' },
       ];
 
       for (const file of files) {
-        const src = path.resolve(__dirname, 'electron', file.filename);
-        const dest = path.join(destDir, file.filename);
+        const src = path.resolve(__dirname, 'electron/preload', file.source);
+        const dest = path.join(destDir, file.output);
         const nextContent = file.content ?? fs.readFileSync(src, 'utf-8');
 
         try {

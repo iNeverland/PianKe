@@ -25,9 +25,14 @@ export function getMoviesDir(): string {
   return path.join(getLibraryRoot(), 'movies');
 }
 
-export function getMovieDir(movieId: string, movieTitle: string): string {
-  // 文件夹名使用标题（人类可读），ID 在 metadata.json 中
-  const safeName = movieTitle.replace(/[<>:"/\\|?*]/g, '_');
+/** 文件夹名使用标题（人类可读），ID 保存在 metadata.json 中。 */
+export function getMovieFolderName(title: string, releaseDate?: string): string {
+  const year = releaseDate?.split('-')[0];
+  return year ? `${title} (${year})` : title;
+}
+
+export function getMovieDir(folderName: string): string {
+  const safeName = folderName.replace(/[<>:"/\\|?*]/g, '_');
   return path.join(getMoviesDir(), safeName);
 }
 

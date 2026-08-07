@@ -1,7 +1,7 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMovieDir, getDiaryPath, getWatchRecordsPath, getMetadataPath } from '../../utils/paths.js';
+import { getMovieDir, getMovieFolderName, getDiaryPath, getWatchRecordsPath, getMetadataPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
@@ -15,11 +15,6 @@ function getPersonalRating(movieId: string): number | null {
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
   return Math.round(rated.reduce((sum, e) => sum + e.rating, 0) / rated.length * 10) / 10;
-}
-
-function makeFolderName(title: string, releaseDate?: string): string {
-  const year = releaseDate ? releaseDate.split('-')[0] : null;
-  return year ? `${title} (${year})` : title;
 }
 
 // 获取想看清单
@@ -50,8 +45,8 @@ export async function markAsWatching(movieId: string): Promise<void> {
   }
 
   const updatedMovie = { ...movie, status: '在看' as const };
-  const folderName = makeFolderName(updatedMovie.title, updatedMovie.releaseDate);
-  const movieDir = getMovieDir(movieId, folderName);
+  const folderName = getMovieFolderName(updatedMovie.title, updatedMovie.releaseDate);
+  const movieDir = getMovieDir(folderName);
 
   // 确保目录存在
   if (!fs.existsSync(movieDir)) {
@@ -101,8 +96,8 @@ export async function markAsWatched(
     };
   }
 
-  const folderName = makeFolderName(updatedMovie.title, updatedMovie.releaseDate);
-  const movieDir = getMovieDir(movieId, folderName);
+  const folderName = getMovieFolderName(updatedMovie.title, updatedMovie.releaseDate);
+  const movieDir = getMovieDir(folderName);
 
   if (!fs.existsSync(movieDir)) {
     fs.mkdirSync(movieDir, { recursive: true });

@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
 import type { MovieMetadata, DiaryEntry, WatchRecord, ScreenshotInfo } from '@shared/types/index';
-import { getLocalDateStr } from '@shared/utils/date';
+import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
 import Modal from '@/components/common/Modal';
 
@@ -31,8 +31,7 @@ export default function MovieDetail() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [diaryExpanded, setDiaryExpanded] = useState(false);
   const [recordsExpanded, setRecordsExpanded] = useState(false);
-  const nowTime = () => `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
-  const [diaryForm, setDiaryForm] = useState({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
+  const [diaryForm, setDiaryForm] = useState({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
   const [progressForm, setProgressForm] = useState({ episode: 1 });
   const [screenshots, setScreenshots] = useState<ScreenshotInfo[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -224,10 +223,10 @@ export default function MovieDetail() {
   async function handleAddDiary() {
     if (!id) return;
     try {
-      const entry = await api.watchRecord.add(id, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
+      const entry = await api.watchRecord.add(id, { ...diaryForm, watchTime: diaryForm.watchTime || getLocalTimeStr() });
       setEntries((prev) => [...prev, entry]);
       setShowAddDiary(false);
-      setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
+      setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
       showToast('追剧记录已添加');
     } catch (err: any) {
       showToast(err.message || '添加失败');
@@ -237,11 +236,11 @@ export default function MovieDetail() {
   async function handleUpdateDiary() {
     if (!id || !editingEntryId) return;
     try {
-      const updated = await api.watchRecord.update(id, editingEntryId, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
+      const updated = await api.watchRecord.update(id, editingEntryId, { ...diaryForm, watchTime: diaryForm.watchTime || getLocalTimeStr() });
       setEntries((prev) => prev.map((e) => (e.id === editingEntryId ? updated : e)));
       setShowAddDiary(false);
       setEditingEntryId(null);
-      setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
+      setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
       showToast('追剧记录已更新');
     } catch (err: any) {
       showToast(err.message || '更新失败');
@@ -932,7 +931,7 @@ export default function MovieDetail() {
       <div className="diary-section mt-9">
         <div className="diary-section-header">
           <span className="diary-section-title">追剧记录 ({entries.length})</span>
-          <button onClick={() => { setEditingEntryId(null); setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' }); setShowAddDiary(true); }} className="btn btn-secondary btn-sm">
+          <button onClick={() => { setEditingEntryId(null); setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' }); setShowAddDiary(true); }} className="btn btn-secondary btn-sm">
             添加
           </button>
         </div>

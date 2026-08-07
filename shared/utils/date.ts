@@ -17,6 +17,18 @@ export function getLocalTimeStr(): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
+/** 供日记和追剧记录共用的时间字段。 */
+export interface WatchMoment {
+  watchDate: string;
+  watchTime?: string;
+}
+
+/** 按本地观看日期和时间由近到远排序，不改变原数组。 */
+export function compareWatchMomentDesc(a: WatchMoment, b: WatchMoment): number {
+  return b.watchDate.localeCompare(a.watchDate)
+    || (b.watchTime || '').localeCompare(a.watchTime || '');
+}
+
 /**
  * 安全解析 YYYY-MM-DD 为本地日期。
  * new Date("2026-07-04") 被 ECMAScript 规范强制解析为 UTC，在不同时区下

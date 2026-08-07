@@ -26,7 +26,7 @@ PianKe/
 ├── electron/              # 主进程 (Node.js 后端)
 │   ├── main.ts            # Electron 入口：frameless 窗口、CSP、单实例锁、窗口控制 IPC、Splash 屏
 │   ├── ipc.ts             # 聚合注册 IPC handlers
-│   ├── preload.cjs        # contextBridge 暴露 API 给渲染进程（含 window 控制接口）
+│   ├── preload/           # 主窗口、裁剪窗口和影片选择器的 contextBridge 脚本
 │   ├── store/
 │   │   └── dataStore.ts   # 内存数据库（Map），含 loaded 标记、LRU 海报缓存
 │   ├── modules/           # Handler + Service 分层
@@ -41,6 +41,7 @@ PianKe/
 ├── src/                   # 渲染进程 (React 前端)
 │   ├── App.tsx            # 根：库状态管理 + 路由 + 主题 + 全局快捷键
 │   ├── main.tsx           # React 入口（含字体异步加载）
+│   ├── assets/brand/      # 唯一的应用与资源库文件夹品牌素材
 │   ├── index.css          # 全局样式（CSS 变量双主题 + Tailwind + 组件类）
 │   ├── lib/api.ts         # electronAPI 惰性代理
 │   ├── types/electron.d.ts# Window.electronAPI 类型声明（含 window 控制接口）
@@ -66,9 +67,6 @@ PianKe/
 │
 ├── build/                 # 构建脚本
 │   └── installer.nsh      # NSIS 自定义安装页（路径选择 + 桌面快捷方式合并单页）
-├── logo/                  # 应用图标素材
-│   ├── PianKe.svg         # 应用 Logo
-│   └── 文件夹.svg          # 库文件夹图标
 ├── resources/             # electron-builder 资源（icon.png, installer-sidebar.bmp）
 ├── docs/                  # 设计文档（style.md, design-philosophy.md）
 └── electron-builder.yml   # 打包配置（NSIS, extraResources, fileAssociations）

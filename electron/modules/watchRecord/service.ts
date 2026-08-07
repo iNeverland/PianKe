@@ -1,18 +1,18 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMovieDir, getWatchRecordsPath } from '../../utils/paths.js';
+import { getMovieDir, getMovieFolderName, getWatchRecordsPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import { CreateWatchRecordInputSchema } from '../../../shared/schemas/index.js';
 import type { WatchRecord } from '../../../shared/types/index.js';
+import { compareWatchMomentDesc, getLocalTimeStr } from '../../../shared/utils/date.js';
 
 function getMovieDirectory(movieId: string): string {
   const movie = dataStore.getMovie(movieId);
   if (!movie) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  const folderName = movie.releaseDate ? `${movie.title} (${movie.releaseDate.split('-')[0]})` : movie.title;
-  return getMovieDir(movieId, folderName);
+  return getMovieDir(getMovieFolderName(movie.title, movie.releaseDate));
 }
 
 async function persist(movieId: string, entries: WatchRecord[]): Promise<void> {
@@ -24,20 +24,16 @@ async function persist(movieId: string, entries: WatchRecord[]): Promise<void> {
 }
 
 export function getWatchRecordsByMovie(movieId: string): WatchRecord[] {
-  return [...dataStore.getWatchRecords(movieId)].sort((a, b) => {
-    const dateCmp = b.watchDate.localeCompare(a.watchDate);
-    return dateCmp || (b.watchTime || '').localeCompare(a.watchTime || '');
-  });
+  return [...dataStore.getWatchRecords(movieId)].sort(compareWatchMomentDesc);
 }
 
 export async function addWatchRecord(movieId: string, data: Record<string, unknown>): Promise<WatchRecord> {
   getMovieDirectory(movieId);
   const validated = CreateWatchRecordInputSchema.parse(data);
-  const now = new Date();
   const entry: WatchRecord = {
     id: uuidv4(),
     watchDate: validated.watchDate,
-    watchTime: validated.watchTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
+    watchTime: validated.watchTime || getLocalTimeStr(),
     rating: validated.rating,
     review: validated.review,
     images: validated.images || [],

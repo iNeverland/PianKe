@@ -13,9 +13,9 @@ files:
   - package.json
   - "!src/**"
 extraResources:
-  - from: logo/PianKe.svg
+  - from: src/assets/brand/PianKe.svg
     to: PianKe.svg
-  - from: logo/文件夹.svg
+  - from: src/assets/brand/library-folder.svg
     to: 文件夹.svg
 win:
   target: nsis

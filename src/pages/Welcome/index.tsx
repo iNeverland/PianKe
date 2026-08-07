@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '@/lib/api';
+import appLogo from '@/assets/brand/PianKe.svg';
 import { showToast } from '@/components/common/Toast';
 
 interface WelcomeProps {
@@ -67,7 +68,7 @@ export default function Welcome({ onLibraryOpen }: WelcomeProps) {
       <div className="welcome-content">
         {/* Logo */}
         <div className="welcome-logo">
-          <img src="logo/PianKe.svg" alt="PianKe" />
+          <img src={appLogo} alt="PianKe" />
         </div>
 
         {/* 标题 */}

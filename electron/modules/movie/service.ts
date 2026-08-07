@@ -3,13 +3,13 @@ import path from 'path';
 import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMoviesDir, getMovieDir, getMetadataPath, getDiaryPath, getWatchRecordsPath, getScreenshotsDir } from '../../utils/paths.js';
+import { getMovieDir, getMovieFolderName, getMetadataPath, getDiaryPath, getWatchRecordsPath, getScreenshotsDir } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { createPosterThumbnail, needsPosterThumbnailRegen } from '../../utils/thumbnail.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
-import { MovieMetadataSchema, CreateMovieInputSchema, UpdateMovieInputSchema } from '../../../shared/schemas/index.js';
-import type { MovieMetadata, MovieSummary, DiaryEntry, WatchRecord, MediaType, WatchStatus, Progress, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
+import { CreateMovieInputSchema, UpdateMovieInputSchema } from '../../../shared/schemas/index.js';
+import type { MovieMetadata, MovieSummary, MediaType, WatchStatus, Progress, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
 import { getLocalDateStr, getLocalTimeStr } from '../../../shared/utils/date.js';
 
 /** 从手动追剧记录中计算平均个人评分，无评分返回 null */
@@ -25,12 +25,6 @@ function getLatestWatchDate(movieId: string): string {
   const entries = dataStore.getDiary(movieId);
   if (!entries || entries.length === 0) return '';
   return entries.reduce((latest, e) => e.watchDate > latest ? e.watchDate : latest, entries[0].watchDate);
-}
-
-/** 从标题和日期生成文件夹名 */
-function makeFolderName(title: string, releaseDate?: string): string {
-  const year = releaseDate ? releaseDate.split('-')[0] : null;
-  return year ? `${title} (${year})` : title;
 }
 
 // 列表（支持筛选）
@@ -128,9 +122,8 @@ export async function createMovie(
   }
 
   const id = uuidv4();
-  const year = inputYear;
-  const folderName = year ? `${validated.title} (${year})` : validated.title;
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(validated.title, validated.releaseDate);
+  const movieDir = getMovieDir(folderName);
 
   // 创建影视文件夹
   fs.mkdirSync(movieDir, { recursive: true });
@@ -228,10 +221,10 @@ export async function updateMovie(
   const updated = { ...existing, ...cleaned, id: existing.id, createdAt: existing.createdAt };
 
   // 计算新旧文件夹名，如果标题或日期变化则迁移目录
-  const oldFolderName = makeFolderName(existing.title, existing.releaseDate);
-  const newFolderName = makeFolderName(updated.title, updated.releaseDate);
-  const oldMovieDir = getMovieDir(id, oldFolderName);
-  const newMovieDir = getMovieDir(id, newFolderName);
+  const oldFolderName = getMovieFolderName(existing.title, existing.releaseDate);
+  const newFolderName = getMovieFolderName(updated.title, updated.releaseDate);
+  const oldMovieDir = getMovieDir(oldFolderName);
+  const newMovieDir = getMovieDir(newFolderName);
 
   if (oldFolderName !== newFolderName && fs.existsSync(oldMovieDir)) {
     fs.mkdirSync(path.dirname(newMovieDir), { recursive: true });
@@ -486,10 +479,8 @@ export async function deleteMovie(id: string): Promise<void> {
     throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
   }
 
-  const folderName = movie.releaseDate
-    ? `${movie.title} (${movie.releaseDate.split('-')[0]})`
-    : movie.title;
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+  const movieDir = getMovieDir(folderName);
 
   if (fs.existsSync(movieDir)) {
     fs.rmSync(movieDir, { recursive: true, force: true });
@@ -575,8 +566,8 @@ export async function updateProgress(
     progress: updatedProgress,
   };
 
-  const folderName = makeFolderName(updated.title, updated.releaseDate);
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
+  const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
     fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
@@ -638,8 +629,8 @@ export async function addTag(id: string, tag: string): Promise<MovieMetadata> {
   if (movie.tags.includes(tag)) return movie;
 
   const updated = { ...movie, tags: [...movie.tags, tag] };
-  const folderName = makeFolderName(updated.title, updated.releaseDate);
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
+  const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
     fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
@@ -657,8 +648,8 @@ export async function removeTag(id: string, tag: string): Promise<MovieMetadata>
   }
 
   const updated = { ...movie, tags: movie.tags.filter((t) => t !== tag) };
-  const folderName = makeFolderName(updated.title, updated.releaseDate);
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
+  const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
     fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
@@ -685,8 +676,8 @@ export function getPosterBase64(id: string, thumb: boolean = false): string | nu
   const cached = dataStore.getPoster(cacheKey);
   if (cached) return cached;
 
-  const folderName = makeFolderName(movie.title, movie.releaseDate);
-  const movieDir = getMovieDir(id, folderName);
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+  const movieDir = getMovieDir(folderName);
   const posterPath = path.join(movieDir, filename);
 
   if (!fs.existsSync(posterPath)) {
@@ -726,8 +717,8 @@ export async function migrateThumbnails(): Promise<void> {
   for (const movie of movies) {
     if (!movie.posterPath) continue;
     try {
-      const folderName = makeFolderName(movie.title, movie.releaseDate);
-      const movieDir = getMovieDir(movie.id, folderName);
+      const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+      const movieDir = getMovieDir(folderName);
       const posterPath = path.join(movieDir, movie.posterPath);
       if (!fs.existsSync(posterPath)) continue;
 
@@ -771,8 +762,7 @@ type ScreenshotMetaMap = Record<string, ScreenshotMetaEntry>;
 function getMovieDirById(id: string): string {
   const movie = dataStore.getMovie(id);
   if (!movie) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  const folderName = makeFolderName(movie.title, movie.releaseDate);
-  return getMovieDir(id, folderName);
+  return getMovieDir(getMovieFolderName(movie.title, movie.releaseDate));
 }
 
 function getScreenshotsMetaPath(screenshotsDir: string): string {

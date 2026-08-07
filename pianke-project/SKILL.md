@@ -15,13 +15,13 @@ PianKe 使用 Electron 34、React 19、TypeScript、Vite、Tailwind、Zod、ECha
 Electron 主进程
   main.ts → 窗口/生命周期 → ipc.ts → modules/*/{handler,service}.ts
                                       ↕ contextBridge
-React 渲染进程 (src/) → lib/api.ts → preload.cjs → shared IPC 契约
+React 渲染进程 (src/) → lib/api.ts → preload/main.cjs → shared IPC 契约
                                       ↕
 用户选择的 .pianke 磁盘资源库
 ```
 
 - 将业务逻辑和文件 I/O 放在 `electron/modules/*/service.ts`；handler 只负责 IPC 边界校验和委派。
-- 将 IPC 通道常量、共享领域类型和 Zod schema 放在 `shared/`。新增能力时同步更新 `electron/preload.cjs`、`src/types/electron.d.ts` 与 `src/lib/api.ts`。
+- 将 IPC 通道常量、共享领域类型和 Zod schema 放在 `shared/`。新增能力时同步更新 `electron/preload/main.cjs`、`src/types/electron.d.ts` 与 `src/lib/api.ts`。
 - 将 `electron/store/dataStore.ts` 视为已加载资源库的内存缓存，而不是持久化真相来源；其中海报缓存为 LRU。
 - 通过 `electron/utils/writeQueue.ts` 串行化同一文件的写入；完整备份前先 drain。
 - 对可预期的领域错误使用 `AppError` 与 `ErrorCode`。
@@ -37,6 +37,7 @@ React 渲染进程 (src/) → lib/api.ts → preload.cjs → shared IPC 契约
     <清理后的标题> (年份)/
       metadata.json
       diary.json
+      watch-records.json
       poster.* / poster_thumb.*
       screenshots/                 # 可选
       diary_images/                # 可选
@@ -51,9 +52,9 @@ React 渲染进程 (src/) → lib/api.ts → preload.cjs → shared IPC 契约
 
 ### 影视与日记
 
-- `MovieMetadata.rating` 是公共评分（0–10）；个人评分从 `rating > 0` 的日记条目计算。
-- `DiaryEntry.rating === -1` 表示自动系统事件，`0–10` 表示用户评分；`kind` 区分 `manual`、`progress` 与 `status`。
-- 保留用户日记。进度和状态自动化只能追加独立的系统事件，不能覆盖同一天的手动日记。
+- `MovieMetadata.rating` 是公共评分（0–10）；个人评分从 `rating > 0` 的手动追剧记录计算。
+- `DiaryEntry.rating === -1` 表示自动系统事件；`kind` 区分 `progress` 与 `status`。`WatchRecord` 保存用户手动写下的评分和感想。
+- 自动进度和状态事件只能追加到 `diary.json`，绝不能创建或覆盖 `watch-records.json` 中的手动记录。
 - 带进度的已看完影视必须满足 `episode === totalEpisodes`。进度当前为单剧集形态 `{ episode, totalEpisodes }`；schema 和资源库迁移仍兼容旧的多季数据。
 - 影视目录由标题和年份推导；标题或上映日期变更时，必须使用同一辅助逻辑重命名或定位目录。
 
@@ -61,7 +62,7 @@ React 渲染进程 (src/) → lib/api.ts → preload.cjs → shared IPC 契约
 
 - 切换到 `在看` 或 `已看完` 时创建状态事件。
 - 更新进度时创建进度事件。
-- 将想看项标记为已看完时，原子地更新状态、完成已有进度，并追加手动日记或状态事件。
+- 将想看项标记为已看完时，原子地更新状态、完成已有进度，并追加状态日记；用户填写的评分或感想单独写入追剧记录。
 - 日记时间线展示已看完影视和带进度影视。统计面板的月度趋势对 `在看`/`已看完` 影视按月去重，排除 `想看`。
 
 ## 产品界面
