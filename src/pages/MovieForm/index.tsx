@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
-import type { MediaType, WatchStatus } from '@shared/types/index';
+import { getSegmentInputWidth } from '@/lib/segmentInput';
+import type { MediaType, WatchStatus, Progress } from '@shared/types/index';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import CustomSelect from '@/components/common/CustomSelect';
@@ -28,7 +29,7 @@ const EMPTY_FORM = {
   synopsis: '',
   rating: 0,
   status: '已看完' as WatchStatus,
-  progress: null as { episode: number; totalEpisodes: number } | null,
+  progress: null as Progress | null,
 };
 
 export default function MovieForm() {
@@ -413,7 +414,7 @@ export default function MovieForm() {
                               setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
                             }}
                             className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border'}`}
-                          size={Math.max(2, label.length || 1)}
+                            style={{ width: getSegmentInputWidth(label) }}
                             placeholder={`#${i + 1}`}
                           />
                           <button

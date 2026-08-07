@@ -39,6 +39,10 @@ export function getDiaryPath(movieDir: string): string {
   return path.join(movieDir, 'diary.json');
 }
 
+export function getWatchRecordsPath(movieDir: string): string {
+  return path.join(movieDir, 'watch-records.json');
+}
+
 export function getDiaryImagesDir(movieDir: string): string {
   return path.join(movieDir, 'diary_images');
 }

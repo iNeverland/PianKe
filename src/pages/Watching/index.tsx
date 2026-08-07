@@ -88,7 +88,7 @@ export default function Watching() {
         rating: data.rating,
         review: data.review,
       });
-      showToast(data.saveRecord ? `「${finishingMovie.title}」记录已保存` : `「${finishingMovie.title}」已标记为已看完`);
+      showToast(data.saveRecord ? `「${finishingMovie.title}」追剧记录已保存` : `「${finishingMovie.title}」已标记为已看完`);
       setFinishingMovie(null);
       await loadMovies();
     } catch (err: any) {

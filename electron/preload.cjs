@@ -134,10 +134,15 @@ const electronAPI = {
 
   diary: {
     getByMovie: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_BY_MOVIE, movieId),
-    add: (movieId, data) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_ADD, movieId, data),
-    update: (movieId, entryId, data) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_UPDATE, movieId, entryId, data),
     delete: (movieId, entryId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_DELETE, movieId, entryId),
     getTimeline: () => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_TIMELINE),
+  },
+
+  watchRecord: {
+    getByMovie: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_GET_BY_MOVIE, movieId),
+    add: (movieId, data) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_ADD, movieId, data),
+    update: (movieId, entryId, data) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_UPDATE, movieId, entryId, data),
+    delete: (movieId, entryId) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_DELETE, movieId, entryId),
   },
 
   watchlist: {

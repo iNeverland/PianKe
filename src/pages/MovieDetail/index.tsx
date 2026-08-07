@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
-import type { MovieMetadata, DiaryEntry, ScreenshotInfo } from '@shared/types/index';
+import { getSegmentInputWidth } from '@/lib/segmentInput';
+import type { MovieMetadata, DiaryEntry, WatchRecord, ScreenshotInfo } from '@shared/types/index';
 import { getLocalDateStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
 import Modal from '@/components/common/Modal';
@@ -15,7 +16,8 @@ export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [movie, setMovie] = useState<MovieMetadata | null>(null);
-  const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const [entries, setEntries] = useState<WatchRecord[]>([]);
+  const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [showAddDiary, setShowAddDiary] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -25,8 +27,10 @@ export default function MovieDetail() {
   const localSegsRef = useRef(localSegs);
   localSegsRef.current = localSegs;
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
+  const [deletingDiaryEntryId, setDeletingDiaryEntryId] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
   const [diaryExpanded, setDiaryExpanded] = useState(false);
+  const [recordsExpanded, setRecordsExpanded] = useState(false);
   const nowTime = () => `${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}`;
   const [diaryForm, setDiaryForm] = useState({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
   const [progressForm, setProgressForm] = useState({ episode: 1 });
@@ -174,12 +178,14 @@ export default function MovieDetail() {
   async function loadMovie() {
     if (!id) return;
     try {
-      const [movieData, diaryData] = await Promise.all([
+      const [movieData, diaryData, watchRecordData] = await Promise.all([
         api.movie.getById(id),
         api.diary.getByMovie(id),
+        api.watchRecord.getByMovie(id),
       ]);
       setMovie(movieData);
-      setEntries(diaryData);
+      setDiaryEntries(diaryData);
+      setEntries(watchRecordData);
       // 加载海报
       if (movieData.posterPath) {
         api.movie.getPosterUrl(id!).then(setPosterUrl).catch(() => {});
@@ -191,6 +197,15 @@ export default function MovieDetail() {
       api.movie.listScreenshots(id!).then(setScreenshots).catch(() => {});
     } catch (err: any) {
       showToast(err.message || '加载失败');
+    }
+  }
+
+  async function refreshDiary() {
+    if (!id) return;
+    try {
+      setDiaryEntries(await api.diary.getByMovie(id));
+    } catch {
+      // 日记刷新失败不影响刚刚保存的影视状态或进度。
     }
   }
 
@@ -209,11 +224,11 @@ export default function MovieDetail() {
   async function handleAddDiary() {
     if (!id) return;
     try {
-      const entry = await api.diary.add(id, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
+      const entry = await api.watchRecord.add(id, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
       setEntries((prev) => [...prev, entry]);
       setShowAddDiary(false);
       setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
-      showToast('观影记录已添加');
+      showToast('追剧记录已添加');
     } catch (err: any) {
       showToast(err.message || '添加失败');
     }
@@ -222,12 +237,12 @@ export default function MovieDetail() {
   async function handleUpdateDiary() {
     if (!id || !editingEntryId) return;
     try {
-      const updated = await api.diary.update(id, editingEntryId, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
+      const updated = await api.watchRecord.update(id, editingEntryId, { ...diaryForm, watchTime: diaryForm.watchTime || nowTime() });
       setEntries((prev) => prev.map((e) => (e.id === editingEntryId ? updated : e)));
       setShowAddDiary(false);
       setEditingEntryId(null);
       setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' });
-      showToast('观影记录已更新');
+      showToast('追剧记录已更新');
     } catch (err: any) {
       showToast(err.message || '更新失败');
     }
@@ -240,11 +255,11 @@ export default function MovieDetail() {
       // 乐观更新：先从 UI 移除
       setEntries((prev) => prev.filter((e) => e.id !== entryId));
       setDeletingEntryId(null);
-      await api.diary.delete(id, entryId);
-      showToastWithAction('观影记录已删除', '撤销', async () => {
+      await api.watchRecord.delete(id, entryId);
+      showToastWithAction('追剧记录已删除', '撤销', async () => {
         try {
           if (entryToDelete) {
-            const restored = await api.diary.add(id, {
+            const restored = await api.watchRecord.add(id, {
               watchDate: entryToDelete.watchDate,
               rating: entryToDelete.rating,
               review: entryToDelete.review || '',
@@ -260,6 +275,20 @@ export default function MovieDetail() {
     }
   }
 
+  async function handleDeleteDiaryEntry(entryId: string) {
+    if (!id) return;
+    const entryToDelete = diaryEntries.find((entry) => entry.id === entryId);
+    try {
+      setDiaryEntries((prev) => prev.filter((entry) => entry.id !== entryId));
+      setDeletingDiaryEntryId(null);
+      await api.diary.delete(id, entryId);
+      showToast('观影日记已删除');
+    } catch (err: any) {
+      if (entryToDelete) setDiaryEntries((prev) => [...prev, entryToDelete]);
+      showToast(err.message || '删除失败');
+    }
+  }
+
   async function handleUpdateProgress() {
     if (!id) return;
     if (movie?.progress?.totalEpisodes && progressForm.episode >= movie.progress.totalEpisodes) {
@@ -271,6 +300,7 @@ export default function MovieDetail() {
       const updated = await api.movie.updateProgress(id, progressForm.episode);
       setMovie(updated);
       setShowProgress(false);
+      void refreshDiary();
       showToast('进度已更新');
     } catch (err: any) {
       showToast(err.message || '更新失败');
@@ -290,6 +320,7 @@ export default function MovieDetail() {
       const updated = await api.movie.updateProgress(id, nextEp);
       setMovie(updated);
       setProgressForm({ episode: nextEp });
+      void refreshDiary();
       showToast(`进度 第${nextEp}集`);
     } catch (err: any) {
       showToast(err.message || '更新失败');
@@ -306,7 +337,7 @@ export default function MovieDetail() {
       });
       setShowFinishWatching(false);
       await loadMovie();
-      showToast(data.saveRecord ? '观影记录已保存' : '已标记为已看完');
+      showToast(data.saveRecord ? '追剧记录已保存' : '已标记为已看完');
     } catch (err: any) {
       showToast(err.message || '操作失败');
     }
@@ -321,6 +352,7 @@ export default function MovieDetail() {
         progress: movie.progress,
       });
       setMovie(updated);
+      void refreshDiary();
       showToast(`状态已更新为「${status}」`);
     } catch (err: any) {
       showToast(err.message || '更新失败');
@@ -802,6 +834,7 @@ export default function MovieDetail() {
             progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length },
           });
           setMovie(updated);
+          void refreshDiary();
         };
         return (
           <div className="stat-card-contained mt-9">
@@ -831,7 +864,7 @@ export default function MovieDetail() {
                       }
                     }}
                     className={`min-w-[48px] px-3.5 h-7 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded transition-colors ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border text-text-muted'}`}
-                    size={Math.max(2, label.length || 1)}
+                    style={{ width: getSegmentInputWidth(label) }}
                     placeholder={`#${i + 1}`}
                   />
                   <button
@@ -895,19 +928,19 @@ export default function MovieDetail() {
         </div>
       ) : null}
 
-      {/* Diary entries */}
+      {/* Watch records */}
       <div className="diary-section mt-9">
         <div className="diary-section-header">
-          <span className="diary-section-title">观影记录 ({entries.length})</span>
+          <span className="diary-section-title">追剧记录 ({entries.length})</span>
           <button onClick={() => { setEditingEntryId(null); setDiaryForm({ watchDate: getLocalDateStr(), watchTime: nowTime(), rating: 0, review: '' }); setShowAddDiary(true); }} className="btn btn-secondary btn-sm">
             添加
           </button>
         </div>
         {entries.length === 0 ? (
-          <p className="text-text-muted text-sm py-4">暂无观影记录</p>
+          <p className="text-text-muted text-sm py-4">暂无追剧记录</p>
         ) : (
           <div>
-            {(diaryExpanded || entries.length <= 5 ? entries : entries.slice(0, 5)).map((entry) => (
+            {(recordsExpanded || entries.length <= 5 ? entries : entries.slice(0, 5)).map((entry) => (
               <div key={entry.id} className="diary-entry">
                 <div className="flex items-start gap-3">
                   {/* 海报缩略图 */}
@@ -924,7 +957,7 @@ export default function MovieDetail() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="diary-entry-header">
-                      <span className="diary-entry-date">{entry.watchDate}{entry.watchTime ? ` ${entry.watchTime}` : ''} 观看</span>
+                      <span className="diary-entry-date">{entry.watchDate}{entry.watchTime ? ` ${entry.watchTime}` : ''} 记录</span>
                       <div className="flex items-center gap-1.5">
                         {entry.rating > 0 && (
                           <div className="flex items-center gap-2">
@@ -944,7 +977,7 @@ export default function MovieDetail() {
                             setShowAddDiary(true);
                           }}
                           className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
-                          title="编辑此记录" aria-label="编辑此记录"
+                          title="编辑此追剧记录" aria-label="编辑此追剧记录"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -954,7 +987,7 @@ export default function MovieDetail() {
                         <button
                           onClick={() => setDeletingEntryId(entry.id)}
                           className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
-                          title="删除此记录" aria-label="删除此记录"
+                          title="删除此追剧记录" aria-label="删除此追剧记录"
                         >
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -971,18 +1004,75 @@ export default function MovieDetail() {
             ))}
             {entries.length > 5 && (
               <button
-                onClick={() => setDiaryExpanded(!diaryExpanded)}
+                onClick={() => setRecordsExpanded(!recordsExpanded)}
                 className="btn btn-secondary btn-sm mt-3"
               >
-                {diaryExpanded ? '收起' : `展开全部 (${entries.length})`}
+                {recordsExpanded ? '收起' : `展开全部 (${entries.length})`}
               </button>
             )}
           </div>
         )}
       </div>
 
-      {/* Add / Edit Diary Modal */}
-      <Modal open={showAddDiary} onClose={() => { setShowAddDiary(false); }} title={editingEntryId ? '编辑观影记录' : '添加观影记录'}>
+      {/* Automatic diary */}
+      <div className="diary-section mt-9">
+        <div className="diary-section-header">
+          <span className="diary-section-title">观影日记 ({diaryEntries.length})</span>
+        </div>
+        {diaryEntries.length === 0 ? (
+          <p className="text-text-muted text-sm py-4">暂无自动观影日记</p>
+        ) : (
+          <div>
+            {(diaryExpanded || diaryEntries.length <= 5 ? diaryEntries : diaryEntries.slice(0, 5)).map((entry) => (
+              <div key={entry.id} className="diary-entry">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-[60px] min-w-[40px] rounded overflow-hidden border border-border flex-shrink-0">
+                    {posterUrl ? (
+                      <img src={posterUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-text-muted bg-bg-elevated">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                          <rect x="2" y="2" width="20" height="20" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="diary-entry-header">
+                      <span className="diary-entry-date">
+                        {entry.watchDate}{entry.watchTime ? ` ${entry.watchTime}` : ''}
+                      </span>
+                      <button
+                        onClick={() => setDeletingDiaryEntryId(entry.id)}
+                        className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
+                        title="删除此观影日记" aria-label="删除此观影日记"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                        </svg>
+                      </button>
+                    </div>
+                    {entry.review && (
+                      <p className="diary-entry-review">{entry.review}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {diaryEntries.length > 5 && (
+              <button
+                onClick={() => setDiaryExpanded(!diaryExpanded)}
+                className="btn btn-secondary btn-sm mt-3"
+              >
+                {diaryExpanded ? '收起' : `展开全部 (${diaryEntries.length})`}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Add / Edit Watch Record Modal */}
+      <Modal open={showAddDiary} onClose={() => { setShowAddDiary(false); }} title={editingEntryId ? '编辑追剧记录' : '添加追剧记录'}>
         <div className="flex flex-col gap-4">
           <div>
             <label className="form-label">观看日期</label>
@@ -1054,13 +1144,26 @@ export default function MovieDetail() {
         </div>
       </Modal>
 
-      {/* Delete Diary Entry Confirm */}
-      <Modal open={Boolean(deletingEntryId)} onClose={() => setDeletingEntryId(null)} title="删除观影记录" width="400px">
-        <p className="text-text-secondary text-sm mb-5">确定要删除这条观影记录吗？</p>
+      {/* Delete Watch Record Confirm */}
+      <Modal open={Boolean(deletingEntryId)} onClose={() => setDeletingEntryId(null)} title="删除追剧记录" width="400px">
+        <p className="text-text-secondary text-sm mb-5">确定要删除这条追剧记录吗？</p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setDeletingEntryId(null)} className="btn btn-ghost">取消</button>
           <button
             onClick={() => deletingEntryId && handleDeleteEntry(deletingEntryId)}
+            className="btn btn-danger"
+          >
+            删除
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={Boolean(deletingDiaryEntryId)} onClose={() => setDeletingDiaryEntryId(null)} title="删除观影日记" width="400px">
+        <p className="text-text-secondary text-sm mb-5">确定要删除这条观影日记吗？</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setDeletingDiaryEntryId(null)} className="btn btn-ghost">取消</button>
+          <button
+            onClick={() => deletingDiaryEntryId && handleDeleteDiaryEntry(deletingDiaryEntryId)}
             className="btn btn-danger"
           >
             删除

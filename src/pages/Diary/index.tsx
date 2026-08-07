@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import type { DiaryTimelineMonth } from '@shared/types/index';
-import StarRating from '@/components/common/StarRating';
 import EmptyState from '@/components/common/EmptyState';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import PosterThumb from '@/components/common/PosterThumb';
@@ -115,7 +114,7 @@ export default function Diary() {
     try {
       await api.diary.delete(entry.movieId, entry.entryId);
       await loadTimeline();
-      showToast('观影记录已删除');
+      showToast('观影日记已删除');
     } catch (err: any) {
       showToast(err.message || '删除失败');
     }
@@ -155,8 +154,6 @@ export default function Diary() {
   const stats = useMemo(() => {
     const displayData = dateFrom || dateTo ? filteredTimeline : timeline;
     let totalEntries = 0;
-    let totalRating = 0;
-    let ratedCount = 0;
     let totalMovies = 0;
     const movieSet = new Set<string>();
     // 当月（热力图当前浏览月份）统计
@@ -170,10 +167,6 @@ export default function Diary() {
         for (const item of day.items) {
           totalEntries++;
           movieSet.add(item.movieId);
-          if (item.rating > 0) {
-            totalRating += item.rating;
-            ratedCount++;
-          }
           if (!dateFrom && !dateTo && dateKey.startsWith(viewMonthPrefix)) {
             viewMonthSet.add(item.movieId);
           }
@@ -187,7 +180,6 @@ export default function Diary() {
       totalEntries,
       totalMovies,
       viewMonthMovies,
-      avgRating: ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : '0.0',
     };
   }, [timeline, filteredTimeline, dateFrom, dateTo, viewYear, viewMonth]);
 
@@ -271,7 +263,7 @@ export default function Diary() {
     return (
       <div>
         <Header title="观影日记" subtitle="记录你的观影轨迹" showAdd={false} />
-        <EmptyState title="暂无观影记录" description="标记影视为已看完后，观影记录会出现在这里" />
+        <EmptyState title="暂无观影日记" description="更新追剧进度或影视状态后，记录会出现在这里" />
       </div>
     );
   }
@@ -290,7 +282,7 @@ export default function Diary() {
         <span className="w-px h-3 bg-border" />
         <span>共 <b className="text-text-primary font-semibold">{stats.totalMovies}</b> 部</span>
         <span className="w-px h-3 bg-border" />
-        <span><b className="text-text-primary font-semibold">{stats.totalEntries}</b> 条记录 / 均分 <b className="text-text-primary font-semibold">{stats.avgRating}</b></span>
+        <span><b className="text-text-primary font-semibold">{stats.totalEntries}</b> 条状态与进度记录</span>
       </div>
 
       {/* 日期筛选栏 */}
@@ -358,10 +350,6 @@ export default function Diary() {
                                 {item.movieTitle}
                                 {item.watchTime && <span className="text-text-muted font-normal ml-1.5 text-xs">{item.watchTime}</span>}
                               </p>
-                              <div className="flex items-center gap-2.5 mt-1">
-                                {item.rating > 0 && <StarRating value={item.rating} readOnly size={12} />}
-                                {item.rating === 0 && <span className="text-text-muted text-[0.65rem]">未评分</span>}
-                              </div>
                               {item.review && (
                                 <p className="text-text-muted text-xs italic mt-1.5 line-clamp-2 leading-relaxed">{item.review}</p>
                               )}
@@ -373,7 +361,7 @@ export default function Diary() {
                               setDeletingDiary({ movieId: item.movieId, entryId: item.id, movieTitle: item.movieTitle });
                             }}
                             className="absolute top-1/2 -translate-y-1/2 right-4 !text-[#e53e3e] text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent"
-                          >移除</button>
+                          >删除</button>
                         </div>
                       ))}
                     </div>
@@ -511,21 +499,21 @@ export default function Diary() {
         </div>
       </div>
 
-
       <Modal
         open={Boolean(deletingDiary)}
         onClose={() => setDeletingDiary(null)}
-        title="删除观影记录"
+        title="删除观影日记"
         width="400px"
-             >
+      >
         <p className="text-text-secondary text-sm mb-5">
-          确定要删除「{deletingDiary?.movieTitle}」的这条观影记录吗？
+          确定要删除「{deletingDiary?.movieTitle}」的这条观影日记吗？
         </p>
         <div className="flex gap-3 justify-end">
           <button onClick={() => setDeletingDiary(null)} className="btn btn-ghost">取消</button>
           <button onClick={deleteDiaryEntry} className="btn btn-danger">删除</button>
         </div>
       </Modal>
+
     </div>
   );
 }

@@ -11,6 +11,12 @@ export function getLocalDateStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/** 返回当前本地时间 HH:mm:ss，用于精确排列自动日记事件。 */
+export function getLocalTimeStr(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+}
+
 /**
  * 安全解析 YYYY-MM-DD 为本地日期。
  * new Date("2026-07-04") 被 ECMAScript 规范强制解析为 UTC，在不同时区下

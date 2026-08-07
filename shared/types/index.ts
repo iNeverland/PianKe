@@ -55,16 +55,25 @@ export interface MovieSummary {
   rewatchCount?: number;
 }
 
-// 观影日记条目
+// 观影日记条目：仅记录系统自动写入的进度与状态变更
 export interface DiaryEntry {
   id: string;
   watchDate: string;
-  watchTime?: string;  // HH:mm 24小时制，记录添加时间
+  watchTime?: string;  // HH:mm 或 HH:mm:ss 24小时制，记录添加时间
   rating: number;
   review?: string;
   images: string[];
-  /** 手动日记、自动进度或状态变更；旧数据缺失时按原样兼容。 */
-  kind?: 'manual' | 'progress' | 'status';
+  kind: 'progress' | 'status';
+}
+
+// 追剧记录：仅由用户手动写下的感受与想法
+export interface WatchRecord {
+  id: string;
+  watchDate: string;
+  watchTime?: string;
+  rating: number;
+  review?: string;
+  images: string[];
 }
 
 // 库信息
@@ -234,13 +243,16 @@ export const IPC_CHANNELS = {
   MOVIE_GET_SCREENSHOT: 'movie:getScreenshot',
   MOVIE_UPDATE_SCREENSHOT_INFO: 'movie:updateScreenshotInfo',
 
-  // 观影日记
-  DIARY_LIST: 'diary:list',
-  DIARY_ADD: 'diary:add',
-  DIARY_UPDATE: 'diary:update',
-  DIARY_DELETE: 'diary:delete',
+  // 自动观影日记
   DIARY_GET_BY_MOVIE: 'diary:getByMovie',
+  DIARY_DELETE: 'diary:delete',
   DIARY_GET_TIMELINE: 'diary:getTimeline',
+
+  // 手动追剧记录
+  WATCH_RECORD_GET_BY_MOVIE: 'watchRecord:getByMovie',
+  WATCH_RECORD_ADD: 'watchRecord:add',
+  WATCH_RECORD_UPDATE: 'watchRecord:update',
+  WATCH_RECORD_DELETE: 'watchRecord:delete',
 
   // 想看清单
   WATCHLIST_LIST: 'watchlist:list',

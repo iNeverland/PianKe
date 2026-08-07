@@ -3,18 +3,18 @@ import path from 'path';
 import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMoviesDir, getMovieDir, getMetadataPath, getDiaryPath, getScreenshotsDir } from '../../utils/paths.js';
+import { getMoviesDir, getMovieDir, getMetadataPath, getDiaryPath, getWatchRecordsPath, getScreenshotsDir } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { createPosterThumbnail, needsPosterThumbnailRegen } from '../../utils/thumbnail.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import { MovieMetadataSchema, CreateMovieInputSchema, UpdateMovieInputSchema } from '../../../shared/schemas/index.js';
-import type { MovieMetadata, MovieSummary, DiaryEntry, MediaType, WatchStatus, Progress, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
-import { getLocalDateStr } from '../../../shared/utils/date.js';
+import type { MovieMetadata, MovieSummary, DiaryEntry, WatchRecord, MediaType, WatchStatus, Progress, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
+import { getLocalDateStr, getLocalTimeStr } from '../../../shared/utils/date.js';
 
-/** 从日记中计算某部影视的平均个人评分，无评分返回 null */
+/** 从手动追剧记录中计算平均个人评分，无评分返回 null */
 function getPersonalRating(movieId: string): number | null {
-  const entries = dataStore.getDiary(movieId);
+  const entries = dataStore.getWatchRecords(movieId);
   if (!entries || entries.length === 0) return null;
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
@@ -192,9 +192,16 @@ export async function createMovie(
     fs.writeFileSync(diaryPath, JSON.stringify([], null, 2), 'utf-8');
   });
 
+  // 创建空的 watch-records.json
+  const watchRecordsPath = getWatchRecordsPath(movieDir);
+  await writeQueue.enqueue(watchRecordsPath, async () => {
+    fs.writeFileSync(watchRecordsPath, JSON.stringify([], null, 2), 'utf-8');
+  });
+
   // 更新内存
   dataStore.setMovie(id, metadata);
   dataStore.setDiary(id, []);
+  dataStore.setWatchRecords(id, []);
   dataStore.updateMovieCount();
 
   return metadata;
@@ -308,8 +315,7 @@ export async function updateMovie(
     const diaryEntries = dataStore.getDiary(id);
     const review = `状态变更为「${updated.status}」`;
     if (!diaryEntries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
-      const now = new Date();
-      const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const watchTime = getLocalTimeStr();
       diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' });
       dataStore.setDiary(id, diaryEntries);
       const diaryPath = getDiaryPath(newMovieDir);
@@ -327,7 +333,7 @@ export async function updateMovie(
   ) {
     const today = getLocalDateStr();
     const now = new Date();
-    const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const watchTime = getLocalTimeStr();
     const filled = updated.progress.segments.filter(s => s.trim());
     const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
     const diaryEntries = dataStore.getDiary(id);
@@ -343,7 +349,7 @@ export async function updateMovie(
     let replaceExisting = false;
     if (lastProgressIdx !== -1) {
       const lastEntry = diaryEntries[lastProgressIdx];
-      const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00'}:00`);
+      const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
       if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
         replaceExisting = true;
       }
@@ -388,6 +394,7 @@ export interface ExcelExportResult {
   filePath: string;
   movieCount: number;
   diaryCount: number;
+  watchRecordCount: number;
 }
 
 /** 导出不含图片二进制的影视数据工作簿。 */
@@ -431,25 +438,42 @@ export function exportMoviesToExcel(filePath: string): ExcelExportResult {
     movie.title,
     entry.watchDate,
     entry.watchTime || '',
-    entry.rating,
-    entry.kind || 'manual',
+    '',
+    entry.kind,
     entry.review || '',
     entry.images.length,
   ]));
   const diarySheet = XLSX.utils.aoa_to_sheet([
-    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '记录类型', '短评', '关联图片数'],
+    ['影视 ID', '影视标题', '记录日期', '记录时间', '评分', '记录类型', '详情', '关联图片数'],
     ...diaryRows,
   ]);
   diarySheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 60 }, { wch: 12 }];
   diarySheet['!autofilter'] = { ref: `A1:H${Math.max(diaryRows.length + 1, 1)}` };
   XLSX.utils.book_append_sheet(workbook, diarySheet, '观影日记');
 
+  const watchRecordRows = movies.flatMap((movie) => dataStore.getWatchRecords(movie.id).map((entry) => [
+    movie.id,
+    movie.title,
+    entry.watchDate,
+    entry.watchTime || '',
+    entry.rating,
+    entry.review || '',
+    entry.images.length,
+  ]));
+  const watchRecordSheet = XLSX.utils.aoa_to_sheet([
+    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '短评', '关联图片数'],
+    ...watchRecordRows,
+  ]);
+  watchRecordSheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 60 }, { wch: 12 }];
+  watchRecordSheet['!autofilter'] = { ref: `A1:G${Math.max(watchRecordRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, watchRecordSheet, '追剧记录');
+
   try {
     const bookType = path.extname(filePath).toLowerCase() === '.xls' ? 'biff8' : 'xlsx';
     // 由主进程显式落盘，避免打包后 xlsx.writeFile 的 Node 文件系统适配失效。
     const fileContent = XLSX.write(workbook, { bookType, type: 'buffer' });
     fs.writeFileSync(filePath, fileContent);
-    return { filePath, movieCount: movies.length, diaryCount: diaryRows.length };
+    return { filePath, movieCount: movies.length, diaryCount: diaryRows.length, watchRecordCount: watchRecordRows.length };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new AppError(ErrorCode.FILE_WRITE_FAILED, `导出 Excel 文件失败：${reason}`, err);
@@ -563,7 +587,7 @@ export async function updateProgress(
   // 10 分钟内同一影视的进度更新合并为最新一条，避免频繁操作产生冗余记录
   const today = getLocalDateStr();
   const now = new Date();
-  const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const watchTime = getLocalTimeStr();
   const review = `第${currentEpisode}集 · 进度 ${Math.round((currentEpisode / movie.progress.totalEpisodes) * 100)}%`;
   const diaryEntries = dataStore.getDiary(id);
 
@@ -579,7 +603,7 @@ export async function updateProgress(
   let replaceExisting = false;
   if (lastProgressIdx !== -1) {
     const lastEntry = diaryEntries[lastProgressIdx];
-    const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00'}:00`);
+    const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
     if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
       replaceExisting = true;
     }

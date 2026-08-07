@@ -1,12 +1,13 @@
 // 内存数据存储：缓存当前库的所有影视和日记数据
 // 避免频繁读取磁盘，提升查询性能
 
-import type { LibraryInfo, MovieMetadata, DiaryEntry } from '../../shared/types/index.js';
+import type { LibraryInfo, MovieMetadata, DiaryEntry, WatchRecord } from '../../shared/types/index.js';
 
 class DataStore {
   private libraryInfo: LibraryInfo | null = null;
   private movies: Map<string, MovieMetadata> = new Map();
   private diaries: Map<string, DiaryEntry[]> = new Map();
+  private watchRecords: Map<string, WatchRecord[]> = new Map();
   private _loaded = false;
 
   // 海报 base64 缓存（LRU，最多 200 条）
@@ -40,6 +41,7 @@ class DataStore {
   removeMovie(id: string): void {
     this.movies.delete(id);
     this.diaries.delete(id);
+    this.watchRecords.delete(id);
     this.invalidatePoster(id);
   }
 
@@ -59,6 +61,20 @@ class DataStore {
 
   getAllDiaries(): Map<string, DiaryEntry[]> {
     return this.diaries;
+  }
+
+  // ---- 手动追剧记录数据 ----
+
+  setWatchRecords(movieId: string, entries: WatchRecord[]): void {
+    this.watchRecords.set(movieId, entries);
+  }
+
+  getWatchRecords(movieId: string): WatchRecord[] {
+    return this.watchRecords.get(movieId) || [];
+  }
+
+  getAllWatchRecords(): Map<string, WatchRecord[]> {
+    return this.watchRecords;
   }
 
   // ---- 统计 ----
@@ -102,6 +118,7 @@ class DataStore {
     this.libraryInfo = null;
     this.movies.clear();
     this.diaries.clear();
+    this.watchRecords.clear();
     this.posterCache.clear();
     this._loaded = false;
   }

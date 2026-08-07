@@ -179,7 +179,7 @@ export default function Settings() {
     try {
       const result = await api.movie.exportExcel();
       if (result) {
-        showToast(`Excel 已导出（${result.movieCount} 部影视，${result.diaryCount} 条日记）`, 5000);
+        showToast(`Excel 已导出（${result.movieCount} 部影视，${result.diaryCount} 条日记，${result.watchRecordCount} 条追剧记录）`, 5000);
       }
     } catch (err: any) {
       showToast(err.message || 'Excel 导出失败');
@@ -359,7 +359,7 @@ export default function Settings() {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">导出 Excel</div>
-            <div className="settings-row-desc">导出影视清单与观影日记，可选择 .xlsx 或 .xls；不嵌入海报、截图等图片</div>
+            <div className="settings-row-desc">导出影视清单、自动观影日记和手动追剧记录，可选择 .xlsx 或 .xls；不嵌入海报、截图等图片</div>
           </div>
           <button className="btn btn-primary btn-sm" onClick={handleExportExcel} disabled={exportingExcel}>
             {exportingExcel ? '导出中…' : '导出'}

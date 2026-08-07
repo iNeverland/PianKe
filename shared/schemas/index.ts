@@ -57,11 +57,20 @@ export const MovieMetadataSchema = z.object({
 export const DiaryEntrySchema = z.object({
   id: z.string().uuid(),
   watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  watchTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  rating: z.number().min(-1).max(10), // -1=追剧自动记录, 0-10=个人评分
+  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  rating: z.literal(-1),
   review: z.string().optional(),
   images: z.array(z.string()).max(9).default([]),
-  kind: z.enum(['manual', 'progress', 'status']).optional(),
+  kind: z.enum(['progress', 'status']),
+});
+
+export const WatchRecordSchema = z.object({
+  id: z.string().uuid(),
+  watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  rating: z.number().min(0).max(10),
+  review: z.string().optional(),
+  images: z.array(z.string()).max(9).default([]),
 });
 
 export const LibraryInfoSchema = z.object({
@@ -93,10 +102,10 @@ export const CreateMovieInputSchema = z.object({
   posterExt: z.string().optional(),
 });
 
-// 用于创建观影记录的输入校验
-export const CreateDiaryInputSchema = z.object({
+// 用于创建手动追剧记录的输入校验
+export const CreateWatchRecordInputSchema = z.object({
   watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不正确'),
-  watchTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
   rating: z.number().min(0).max(10), // 个人评分 0-10（5 星制，每星 2 分）
   review: z.string().optional(),
   images: z.array(z.string()).max(9).default([]),

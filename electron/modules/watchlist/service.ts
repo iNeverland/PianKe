@@ -1,16 +1,16 @@
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMovieDir, getDiaryPath, getMetadataPath } from '../../utils/paths.js';
+import { getMovieDir, getDiaryPath, getWatchRecordsPath, getMetadataPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
-import type { MovieSummary, DiaryEntry } from '../../../shared/types/index.js';
-import { getLocalDateStr } from '../../../shared/utils/date.js';
+import type { MovieSummary, DiaryEntry, WatchRecord } from '../../../shared/types/index.js';
+import { getLocalDateStr, getLocalTimeStr } from '../../../shared/utils/date.js';
 
-/** 从日记中计算某部影视的平均个人评分，无评分返回 null */
+/** 从手动追剧记录中计算某部影视的平均个人评分，无评分返回 null */
 function getPersonalRating(movieId: string): number | null {
-  const entries = dataStore.getDiary(movieId);
+  const entries = dataStore.getWatchRecords(movieId);
   if (!entries || entries.length === 0) return null;
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
@@ -70,8 +70,7 @@ export async function markAsWatching(movieId: string): Promise<void> {
   const entries = dataStore.getDiary(movieId);
   const review = '状态变更为「追剧中」';
   if (!entries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
-    const now = new Date();
-    const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const watchTime = getLocalTimeStr();
     entries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' });
     dataStore.setDiary(movieId, entries);
     const diaryPath = getDiaryPath(movieDir);
@@ -81,7 +80,7 @@ export async function markAsWatching(movieId: string): Promise<void> {
   }
 }
 
-// 标记已看完（原子操作：更新状态 + 添加观影记录）
+// 标记已看完（原子操作：更新状态 + 自动日记 + 可选手动追剧记录）
 export async function markAsWatched(
   movieId: string,
   entryData: { watchDate: string; rating: number; review?: string }
@@ -116,22 +115,21 @@ export async function markAsWatched(
 
   dataStore.setMovie(movieId, updatedMovie);
 
-  // 快捷“看完”未收集评分/短评时，写入状态事件而非伪造 0 分手动日记。
-  const now = new Date();
-  const watchTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  // 状态变更始终写入自动日记。
+  const watchTime = getLocalTimeStr();
   const hasManualContent = entryData.rating > 0 || Boolean(entryData.review?.trim());
-  const entry: DiaryEntry = {
+  const statusEntry: DiaryEntry = {
     id: uuidv4(),
     watchDate: entryData.watchDate,
     watchTime,
-    rating: hasManualContent ? entryData.rating : -1,
-    review: hasManualContent ? entryData.review : '状态变更为「已看完」',
+    rating: -1,
+    review: '状态变更为「已看完」',
     images: [],
-    kind: hasManualContent ? 'manual' : 'status',
+    kind: 'status',
   };
 
   const entries = dataStore.getDiary(movieId);
-  entries.push(entry);
+  entries.push(statusEntry);
 
   const diaryPath = getDiaryPath(movieDir);
   await writeQueue.enqueue(diaryPath, async () => {
@@ -139,4 +137,22 @@ export async function markAsWatched(
   });
 
   dataStore.setDiary(movieId, entries);
+
+  // 用户主动填写的评分/短评单独保存为手动追剧记录。
+  if (hasManualContent) {
+    const watchRecord: WatchRecord = {
+      id: uuidv4(),
+      watchDate: entryData.watchDate,
+      watchTime,
+      rating: entryData.rating,
+      review: entryData.review,
+      images: [],
+    };
+    const watchRecords = [...dataStore.getWatchRecords(movieId), watchRecord];
+    const watchRecordsPath = getWatchRecordsPath(movieDir);
+    await writeQueue.enqueue(watchRecordsPath, async () => {
+      fs.writeFileSync(watchRecordsPath, JSON.stringify(watchRecords, null, 2), 'utf-8');
+    });
+    dataStore.setWatchRecords(movieId, watchRecords);
+  }
 }

@@ -39,6 +39,7 @@ function getDiaryRatingBucket(rating: number): number | null {
 export function getDashboard(): StatsDashboard {
   const movies = getAllMovies();
   const allDiaries = dataStore.getAllDiaries();
+  const allWatchRecords = dataStore.getAllWatchRecords();
 
   const byTypeCount: Record<string, number> = {};
   const genreCount: Record<string, number> = {};
@@ -62,7 +63,8 @@ export function getDashboard(): StatsDashboard {
     }
 
     const entries = allDiaries.get(movie.id) || [];
-    for (const entry of entries) {
+    const records = allWatchRecords.get(movie.id) || [];
+    for (const entry of records) {
       if (entry.rating > 0) {
         totalRating += entry.rating;
         personalRatingCount++;
@@ -140,8 +142,8 @@ export function getOverview(): StatsOverview {
   // 计算平均个人评分（排除未评分的日记条目）
   let totalRating = 0;
   let ratingCount = 0;
-  const allDiaries = dataStore.getAllDiaries();
-  for (const [, entries] of allDiaries) {
+  const allWatchRecords = dataStore.getAllWatchRecords();
+  for (const [, entries] of allWatchRecords) {
     for (const entry of entries) {
       if (entry.rating > 0) {
         totalRating += entry.rating;
@@ -246,8 +248,8 @@ export function getDiaryRatingDistribution(): { stars: number; label: string; co
   ];
 
   const count: Record<number, number> = { 2: 0, 4: 0, 6: 0, 8: 0, 10: 0 };
-  const allDiaries = dataStore.getAllDiaries();
-  for (const [, entries] of allDiaries) {
+  const allWatchRecords = dataStore.getAllWatchRecords();
+  for (const [, entries] of allWatchRecords) {
     for (const entry of entries) {
       // 排除未评分的条目
       if (entry.rating <= 0) continue;
@@ -322,6 +324,7 @@ export function getMonthSummary(year: number, month: number): MonthSummary {
   const completed = getCompletedMovies();
   const movies: MovieSummary[] = [];
   const diaryEntries: DiaryEntry[] = [];
+  const allWatchRecords = dataStore.getAllWatchRecords();
   let totalMinutes = 0;
   let totalRating = 0;
   let ratingCount = 0;
@@ -335,18 +338,19 @@ export function getMonthSummary(year: number, month: number): MonthSummary {
       if (entry.watchDate.startsWith(monthStr)) {
         hasEntryThisMonth = true;
         diaryEntries.push(entry);
-        if (entry.rating > 0) {
-          totalRating += entry.rating;
-          ratingCount++;
-        }
       }
     }
 
     if (hasEntryThisMonth) {
-      // 计算该影视的个人评分（从日记中取均值）
-      const diaryRatings = entries.filter(e => e.rating > 0).map(e => e.rating);
-      const personalRating = diaryRatings.length > 0
-        ? Math.round(diaryRatings.reduce((a, b) => a + b, 0) / diaryRatings.length * 10) / 10
+      // 计算该影视的个人评分（从手动追剧记录中取均值）
+      const watchRatings = (allWatchRecords.get(movie.id) || []).filter((e) => e.rating > 0).map((e) => e.rating);
+      const monthRatings = (allWatchRecords.get(movie.id) || [])
+        .filter((e) => e.watchDate.startsWith(monthStr) && e.rating > 0)
+        .map((e) => e.rating);
+      totalRating += monthRatings.reduce((sum, rating) => sum + rating, 0);
+      ratingCount += monthRatings.length;
+      const personalRating = watchRatings.length > 0
+        ? Math.round(watchRatings.reduce((a, b) => a + b, 0) / watchRatings.length * 10) / 10
         : null;
 
       movies.push({
@@ -363,7 +367,7 @@ export function getMonthSummary(year: number, month: number): MonthSummary {
         status: movie.status,
         progress: movie.progress,
       });
-      const realWatchCount = entries.filter(e => e.watchDate.startsWith(monthStr) && e.rating >= 0).length || 1;
+      const realWatchCount = entries.filter(e => e.watchDate.startsWith(monthStr)).length || 1;
       totalMinutes += movie.runtime * realWatchCount;
 
       for (const g of movie.genre) {

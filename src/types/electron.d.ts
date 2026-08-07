@@ -1,5 +1,5 @@
 import type {
-  LibraryInfo, MovieSummary, MovieMetadata, DiaryEntry,
+  LibraryInfo, MovieSummary, MovieMetadata, DiaryEntry, WatchRecord,
   StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre,
   StatsByRating, StatsByCountry, StatsMonthlyTrend, MonthSummary,
   DiaryTimelineMonth, DiaryCalendarEntry, ScreenshotInfo,
@@ -54,7 +54,7 @@ export interface ElectronAPI {
     removeTag: (id: string, tag: string) => Promise<MovieMetadata>;
     getAllTags: () => Promise<string[]>;
     getPosterUrl: (id: string, thumb?: boolean) => Promise<string | null>;
-    exportExcel: () => Promise<{ filePath: string; movieCount: number; diaryCount: number } | null>;
+    exportExcel: () => Promise<{ filePath: string; movieCount: number; diaryCount: number; watchRecordCount: number } | null>;
     listScreenshots: (id: string) => Promise<ScreenshotInfo[]>;
     addScreenshot: (id: string, base64Data: string, ext: string) => Promise<ScreenshotInfo[]>;
     deleteScreenshot: (id: string, filename: string) => Promise<ScreenshotInfo[]>;
@@ -63,10 +63,14 @@ export interface ElectronAPI {
   };
   diary: {
     getByMovie: (movieId: string) => Promise<DiaryEntry[]>;
-    add: (movieId: string, data: Record<string, unknown>) => Promise<DiaryEntry>;
-    update: (movieId: string, entryId: string, data: Record<string, unknown>) => Promise<DiaryEntry>;
     delete: (movieId: string, entryId: string) => Promise<void>;
     getTimeline: () => Promise<DiaryTimelineMonth[]>;
+  };
+  watchRecord: {
+    getByMovie: (movieId: string) => Promise<WatchRecord[]>;
+    add: (movieId: string, data: Record<string, unknown>) => Promise<WatchRecord>;
+    update: (movieId: string, entryId: string, data: Record<string, unknown>) => Promise<WatchRecord>;
+    delete: (movieId: string, entryId: string) => Promise<void>;
   };
   watchlist: {
     list: () => Promise<MovieSummary[]>;

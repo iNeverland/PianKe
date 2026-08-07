@@ -3,14 +3,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
 import { dataStore } from '../../store/dataStore.js';
-import { setLibraryRoot, getLibraryRoot, getMoviesDir } from '../../utils/paths.js';
+import { setLibraryRoot, getLibraryRoot, getMoviesDir, getWatchRecordsPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
-import { LibraryInfoSchema, MovieMetadataSchema, DiaryEntrySchema } from '../../../shared/schemas/index.js';
-import type { LibraryInfo, MovieSummary, DiaryEntry } from '../../../shared/types/index.js';
+import { LibraryInfoSchema, MovieMetadataSchema, DiaryEntrySchema, WatchRecordSchema } from '../../../shared/schemas/index.js';
+import type { LibraryInfo, MovieSummary, DiaryEntry, WatchRecord } from '../../../shared/types/index.js';
 
-const LATEST_VERSION = 3;
+const LATEST_VERSION = 4;
 
 /** 迁移函数：每个函数处理一个版本的升级 */
 const MIGRATIONS: Record<number, (movie: any) => void> = {
@@ -34,6 +34,8 @@ const MIGRATIONS: Record<number, (movie: any) => void> = {
       movie.progress = { episode: watched, totalEpisodes };
     }
   },
+  // v3 → v4：手动感想从 diary.json 拆分到 watch-records.json。
+  4: () => {},
 };
 
 /** 对单个电影数据按序执行迁移 */
@@ -298,13 +300,14 @@ export async function createFullBackup(destinationDir: string): Promise<FullBack
 // 获取库摘要（轻量列表，按最近观看日期倒序）
 export function getSummary(): MovieSummary[] {
   const allDiaries = dataStore.getAllDiaries();
+  const allWatchRecords = dataStore.getAllWatchRecords();
   return dataStore.getAllMovies().map((m) => ({
     id: m.id,
     title: m.title,
     titleOriginal: m.titleOriginal,
     mediaType: m.mediaType,
     rating: m.rating,
-    personalRating: getPersonalRating(m.id, allDiaries),
+    personalRating: getPersonalRating(m.id, allWatchRecords),
     posterThumbPath: m.posterThumbPath,
     releaseDate: m.releaseDate,
     genre: m.genre,
@@ -327,6 +330,7 @@ export function getRecentWatches(days: number = 30): MovieSummary[] {
 
   const recentMovieIds = new Set<string>();
   const allDiaries = dataStore.getAllDiaries();
+  const allWatchRecords = dataStore.getAllWatchRecords();
 
   for (const [movieId, entries] of allDiaries) {
     const movie = dataStore.getMovie(movieId);
@@ -349,7 +353,7 @@ export function getRecentWatches(days: number = 30): MovieSummary[] {
       titleOriginal: m.titleOriginal,
       mediaType: m.mediaType,
       rating: m.rating,
-      personalRating: getPersonalRating(m.id, allDiaries),
+      personalRating: getPersonalRating(m.id, allWatchRecords),
       posterThumbPath: m.posterThumbPath,
       releaseDate: m.releaseDate,
       genre: m.genre,
@@ -365,9 +369,9 @@ export function getRecentWatches(days: number = 30): MovieSummary[] {
     });
 }
 
-/** 从日记中计算某部影视的平均个人评分，无评分返回 null */
-function getPersonalRating(movieId: string, allDiaries: Map<string, DiaryEntry[]>): number | null {
-  const entries = allDiaries.get(movieId);
+/** 从手动追剧记录中计算某部影视的平均个人评分，无评分返回 null */
+function getPersonalRating(movieId: string, allWatchRecords: Map<string, WatchRecord[]>): number | null {
+  const entries = allWatchRecords.get(movieId);
   if (!entries || entries.length === 0) return null;
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
@@ -410,6 +414,7 @@ async function loadAllMovies(fromVersion: number): Promise<void> {
     const movieDir = path.join(moviesDir, entry.name);
     const metadataPath = path.join(movieDir, 'metadata.json');
     const diaryPath = path.join(movieDir, 'diary.json');
+    const watchRecordsPath = getWatchRecordsPath(movieDir);
 
     try {
       const raw = await fs.promises.readFile(metadataPath, 'utf-8');
@@ -427,13 +432,48 @@ async function loadAllMovies(fromVersion: number): Promise<void> {
       const metadata = MovieMetadataSchema.parse(parsed);
       dataStore.setMovie(metadata.id, metadata);
 
-      // 直接读日记文件，省去 access 检查
+      // 读取日记与追剧记录；旧库在此完成手动记录迁移。
       try {
         const diaryRaw = await fs.promises.readFile(diaryPath, 'utf-8');
         const diaryParsed = JSON.parse(diaryRaw);
-        dataStore.setDiary(metadata.id, z.array(DiaryEntrySchema).parse(diaryParsed));
+        if (!Array.isArray(diaryParsed)) throw new Error('Invalid diary data');
+
+        if (fromVersion < 4) {
+          const automaticEntries: any[] = [];
+          const manualEntries: any[] = [];
+          const automaticReviewPattern = /^(第\d+集 · 进度 \d+%|状态变更为「(在看|已看完|追剧中)」)/;
+          for (const item of diaryParsed) {
+            const isAutomatic = item && (
+              item.kind === 'progress' ||
+              item.kind === 'status' ||
+              item.rating === -1 ||
+              (item.rating === 0 && automaticReviewPattern.test(item.review || ''))
+            );
+            if (isAutomatic) automaticEntries.push(item);
+            else manualEntries.push(item);
+          }
+          const diaries = z.array(DiaryEntrySchema).parse(automaticEntries);
+          const records = z.array(WatchRecordSchema).parse(manualEntries.map(({ kind: _kind, ...rest }: any) => rest));
+          dataStore.setDiary(metadata.id, diaries);
+          dataStore.setWatchRecords(metadata.id, records);
+          fs.promises.writeFile(diaryPath, JSON.stringify(diaries, null, 2), 'utf-8').catch(
+            (err) => console.error(`Diary migration write failed: ${entry.name}`, err)
+          );
+          fs.promises.writeFile(watchRecordsPath, JSON.stringify(records, null, 2), 'utf-8').catch(
+            (err) => console.error(`Watch records migration write failed: ${entry.name}`, err)
+          );
+        } else {
+          dataStore.setDiary(metadata.id, z.array(DiaryEntrySchema).parse(diaryParsed));
+          try {
+            const recordsRaw = await fs.promises.readFile(watchRecordsPath, 'utf-8');
+            dataStore.setWatchRecords(metadata.id, z.array(WatchRecordSchema).parse(JSON.parse(recordsRaw)));
+          } catch {
+            dataStore.setWatchRecords(metadata.id, []);
+          }
+        }
       } catch {
         dataStore.setDiary(metadata.id, []);
+        dataStore.setWatchRecords(metadata.id, []);
       }
     } catch (err) {
       console.error(`Failed to load movie: ${entry.name}`, err);

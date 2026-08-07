@@ -1,11 +1,9 @@
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
 import { getMovieDir, getDiaryPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
-import { CreateDiaryInputSchema } from '../../../shared/schemas/index.js';
 import type { DiaryEntry, DiaryTimelineMonth, DiaryTimelineDay } from '../../../shared/types/index.js';
 import { parseLocalDate } from '../../../shared/utils/date.js';
 
@@ -19,101 +17,22 @@ export function getDiaryByMovie(movieId: string): DiaryEntry[] {
   });
 }
 
-// 添加观影记录
-export async function addDiaryEntry(
-  movieId: string,
-  data: Record<string, unknown>
-): Promise<DiaryEntry> {
-  const movie = dataStore.getMovie(movieId);
-  if (!movie) {
-    throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  }
-
-  const validated = CreateDiaryInputSchema.parse(data);
-  const now = new Date();
-  const watchTime = validated.watchTime || `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-  const entry: DiaryEntry = {
-    id: uuidv4(),
-    watchDate: validated.watchDate,
-    watchTime,
-    rating: validated.rating,
-    review: validated.review,
-    images: validated.images || [],
-    kind: 'manual',
-  };
-
-  const entries = dataStore.getDiary(movieId);
-  entries.push(entry);
-
-  // 写入文件
-  const folderName = movie.releaseDate
-    ? `${movie.title} (${movie.releaseDate.split('-')[0]})`
-    : movie.title;
-  const movieDir = getMovieDir(movieId, folderName);
-  const diaryPath = getDiaryPath(movieDir);
-
-  await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify(entries, null, 2), 'utf-8');
-  });
-
-  dataStore.setDiary(movieId, entries);
-  return entry;
-}
-
-// 更新观影记录
-export async function updateDiaryEntry(
-  movieId: string,
-  entryId: string,
-  data: Partial<DiaryEntry>
-): Promise<DiaryEntry> {
-  const movie = dataStore.getMovie(movieId);
-  if (!movie) {
-    throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  }
-
-  const entries = dataStore.getDiary(movieId);
-  const index = entries.findIndex((e) => e.id === entryId);
-  if (index === -1) {
-    throw new AppError(ErrorCode.DIARY_NOT_FOUND, '观影记录不存在');
-  }
-
-  const updated = { ...entries[index], ...data, id: entryId };
-  entries[index] = updated;
-
-  const folderName = movie.releaseDate
-    ? `${movie.title} (${movie.releaseDate.split('-')[0]})`
-    : movie.title;
-  const movieDir = getMovieDir(movieId, folderName);
-  const diaryPath = getDiaryPath(movieDir);
-
-  await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify(entries, null, 2), 'utf-8');
-  });
-
-  dataStore.setDiary(movieId, entries);
-  return updated;
-}
-
-// 删除观影记录
+// 删除一条自动观影日记
 export async function deleteDiaryEntry(movieId: string, entryId: string): Promise<void> {
   const movie = dataStore.getMovie(movieId);
-  if (!movie) {
-    throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  }
+  if (!movie) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
 
   const entries = dataStore.getDiary(movieId);
-  const filtered = entries.filter((e) => e.id !== entryId);
+  if (!entries.some((entry) => entry.id === entryId)) {
+    throw new AppError(ErrorCode.DIARY_NOT_FOUND, '观影日记不存在');
+  }
 
-  const folderName = movie.releaseDate
-    ? `${movie.title} (${movie.releaseDate.split('-')[0]})`
-    : movie.title;
-  const movieDir = getMovieDir(movieId, folderName);
-  const diaryPath = getDiaryPath(movieDir);
-
+  const filtered = entries.filter((entry) => entry.id !== entryId);
+  const folderName = movie.releaseDate ? `${movie.title} (${movie.releaseDate.split('-')[0]})` : movie.title;
+  const diaryPath = getDiaryPath(getMovieDir(movieId, folderName));
   await writeQueue.enqueue(diaryPath, async () => {
     fs.writeFileSync(diaryPath, JSON.stringify(filtered, null, 2), 'utf-8');
   });
-
   dataStore.setDiary(movieId, filtered);
 }
 

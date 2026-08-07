@@ -60,7 +60,7 @@ export default function FinishWatchingModal({ open, movieTitle, onClose, onCompl
           <button onClick={onClose} className="btn btn-ghost" disabled={submitting}>取消</button>
           <button onClick={() => submit(false)} className="btn btn-secondary" disabled={submitting}>仅标记看完</button>
           <button onClick={() => submit(true)} className="btn btn-primary" disabled={submitting}>
-            {submitting ? '保存中...' : '保存记录并看完'}
+            {submitting ? '保存中...' : '保存追剧记录并看完'}
           </button>
         </div>
       </div>
