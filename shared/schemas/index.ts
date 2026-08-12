@@ -70,7 +70,6 @@ export const WatchRecordSchema = z.object({
   watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
   rating: z.number().min(0).max(10),
   review: z.string().optional(),
-  images: z.array(z.string()).max(9).default([]),
 });
 
 export const LibraryInfoSchema = z.object({
@@ -94,7 +93,7 @@ export const CreateMovieInputSchema = z.object({
   runtime: z.number().int().nonnegative().default(0),
   synopsis: z.string().optional(),
   rating: z.number().min(0).max(10).default(0),
-  status: z.enum(['在看', '已看完', '想看']).default('已看完'),
+  status: z.enum(['在看', '已看完', '想看']).default('想看'),
   progress: ProgressSchema.nullable().default(null),
   rewatchCount: z.number().int().nonnegative().optional(),
   // 海报 base64 数据（data URL 格式）
@@ -108,7 +107,6 @@ export const CreateWatchRecordInputSchema = z.object({
   watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
   rating: z.number().min(0).max(10), // 个人评分 0-10（5 星制，每星 2 分）
   review: z.string().optional(),
-  images: z.array(z.string()).max(9).default([]),
 });
 
 // 用于更新影视的输入校验（白名单，防止覆盖 id/createdAt 等字段）

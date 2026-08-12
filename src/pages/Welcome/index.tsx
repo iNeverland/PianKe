@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import api from '@/lib/api';
 import appLogo from '@/assets/brand/PianKe.svg';
+import AppIcon from '@/components/common/AppIcon';
 import { showToast } from '@/components/common/Toast';
 
 interface WelcomeProps {
@@ -81,9 +82,7 @@ export default function Welcome({ onLibraryOpen }: WelcomeProps) {
         <div className="welcome-actions">
           <button className="action-card" onClick={handleOpen}>
             <div className="action-card-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-              </svg>
+              <AppIcon name="folder" />
             </div>
             <div>
               <div className="action-card-title">打开已有资源库</div>
@@ -96,9 +95,7 @@ export default function Welcome({ onLibraryOpen }: WelcomeProps) {
             onClick={() => setShowCreate(true)}
           >
             <div className="action-card-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <AppIcon name="add" />
             </div>
             <div>
               <div className="action-card-title">创建新资源库</div>

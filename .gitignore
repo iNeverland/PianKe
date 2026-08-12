@@ -16,5 +16,8 @@ Thumbs.db
 *.pem
 *.cer
 *.crt
+.pianke-*-key
+.pianke-*-key.pub
 .env
 .env.*
+.vercel/

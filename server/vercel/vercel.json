@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/**/*.mjs": {
+      "maxDuration": 10
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/details/:mediaType/:id",
+      "destination": "/api/details?mediaType=:mediaType&id=:id"
+    }
+  ]
+}

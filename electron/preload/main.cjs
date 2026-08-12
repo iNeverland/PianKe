@@ -27,7 +27,11 @@ const IPC_CHANNELS = {
   MOVIE_ADD_SCREENSHOT: "movie:addScreenshot",
   MOVIE_DELETE_SCREENSHOT: "movie:deleteScreenshot",
   MOVIE_GET_SCREENSHOT: "movie:getScreenshot",
+  MOVIE_GET_SCREENSHOT_THUMBNAIL: "movie:getScreenshotThumbnail",
   MOVIE_UPDATE_SCREENSHOT_INFO: "movie:updateScreenshotInfo",
+  TMDB_SEARCH: "tmdb:search",
+  TMDB_GET_DETAILS: "tmdb:getDetails",
+  TMDB_GET_POSTER: "tmdb:getPoster",
   DIARY_ADD: "diary:add",
   DIARY_UPDATE: "diary:update",
   DIARY_DELETE: "diary:delete",
@@ -91,14 +95,21 @@ const electronAPI = {
   getDesktopSources: () => ipcRenderer.invoke('desktop-capturer:getSources'),
   getPrimaryScreenSnapshot: () => ipcRenderer.invoke('desktop-capturer:getPrimaryScreenSnapshot'),
 
-  // 启动桌面裁剪窗口（传入 movieId 和全屏截图 data URL）
-  startCrop: (movieId, fullScreenDataUrl) => ipcRenderer.invoke('crop:start', movieId, fullScreenDataUrl),
+  // 启动桌面裁剪窗口（从非详情页发起时同步当前数据源的影片列表）
+  startCrop: (movieId, fullScreenDataUrl, movies) => ipcRenderer.invoke('crop:start', movieId, fullScreenDataUrl, movies),
 
   // 监听截图保存完成
   onScreenshotSaved: (callback) => {
     const handler = (_event, screenshots) => callback(screenshots);
     ipcRenderer.on('screenshot:saved', handler);
     return () => ipcRenderer.removeListener('screenshot:saved', handler);
+  },
+
+  // 裁剪窗口完成后将图片交给渲染进程上传到当前云端账号。
+  onScreenshotCropped: (callback) => {
+    const handler = (_event, movieId, dataUrl) => callback(movieId, dataUrl);
+    ipcRenderer.on('screenshot:cropped', handler);
+    return () => ipcRenderer.removeListener('screenshot:cropped', handler);
   },
 
   library: {
@@ -129,7 +140,14 @@ const electronAPI = {
     addScreenshot: (id, base64Data, ext) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_ADD_SCREENSHOT, id, base64Data, ext),
     deleteScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE_SCREENSHOT, id, filename),
     getScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_SCREENSHOT, id, filename),
+    getScreenshotThumbnail: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_SCREENSHOT_THUMBNAIL, id, filename),
     updateScreenshotInfo: (id, filename, info) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_SCREENSHOT_INFO, id, filename, info),
+  },
+
+  tmdb: {
+    search: (query) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_SEARCH, query),
+    getDetails: (mediaType, id) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_GET_DETAILS, mediaType, id),
+    getPoster: (posterPath) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_GET_POSTER, posterPath),
   },
 
   diary: {

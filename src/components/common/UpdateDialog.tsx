@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { AppUpdateState } from '@shared/types/index';
 import { showToast } from './Toast';
 import Modal from './Modal';
+import AppIcon from './AppIcon';
 
 const AUTO_PROMPT_VERSION_KEY = 'pianke-auto-update-prompt-version';
 
@@ -76,11 +77,7 @@ export default function UpdateDialog() {
       <div className="px-6 pb-6">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 shrink-0 rounded-xl bg-accent-dim text-accent flex items-center justify-center">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <path d="M12 3v12" />
-              <path d="m7 10 5 5 5-5" />
-              <path d="M5 21h14" />
-            </svg>
+            <AppIcon name="download" className="w-5 h-5" />
           </div>
           <div className="min-w-0 pt-0.5">
             <p className="text-sm font-medium text-text-primary">

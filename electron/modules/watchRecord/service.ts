@@ -36,7 +36,6 @@ export async function addWatchRecord(movieId: string, data: Record<string, unkno
     watchTime: validated.watchTime || getLocalTimeStr(),
     rating: validated.rating,
     review: validated.review,
-    images: validated.images || [],
   };
   const entries = [...dataStore.getWatchRecords(movieId), entry];
   await persist(movieId, entries);

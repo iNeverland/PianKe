@@ -6,6 +6,7 @@ import ContextMenu from '@/components/common/ContextMenu';
 import type { ContextMenuItem } from '@/components/common/ContextMenu';
 import Modal from '@/components/common/Modal';
 import { showToast } from '@/components/common/Toast';
+import AppIcon from '@/components/common/AppIcon';
 
 interface MovieCardProps {
   movie: MovieSummary;
@@ -96,25 +97,21 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
             <img
               src={posterUrl}
               alt={movie.title}
+              loading="lazy"
+              decoding="async"
               onLoad={handleImgLoad}
               className={imgLoaded ? 'loaded' : 'loading'}
               style={imgLoaded ? undefined : { opacity: 0 }}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-text-muted">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-10 h-10">
-                <rect x="2" y="2" width="20" height="20" rx="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <path d="M21 15l-5-5L5 21" />
-              </svg>
+              <AppIcon name="image" className="w-10 h-10" />
             </div>
           )}
 
           {/* Top-right rating badge */}
           <div className="poster-rating" style={posterUrl && !imgLoaded ? { opacity: 0 } : undefined}>
-            <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-            </svg>
+            <AppIcon name="star" />
             {movie.rating.toFixed(1)}
           </div>
 

@@ -17,6 +17,8 @@ extraResources:
     to: PianKe.svg
   - from: src/assets/brand/library-folder.svg
     to: 文件夹.svg
+  - from: resources/tmdb-proxy.json
+    to: tmdb-proxy.json
 win:
   target: nsis
   icon: resources/icon.png
@@ -26,11 +28,10 @@ mac:
     - zip
   icon: resources/icon.icns
 publish:
-  provider: github
-  owner: iNeverland
-  repo: PianKe
-  vPrefixedTagName: false
-  releaseType: release
+  # 发布地址由 CI 的 UPDATE_BASE_URL Secret 注入，避免将服务器域名写入仓库。
+  # 例如：https://updates.example.com/pianke
+  provider: generic
+  url: ${env.UPDATE_BASE_URL}
 fileAssociations:
   - ext: pianke
     name: PianKe Library

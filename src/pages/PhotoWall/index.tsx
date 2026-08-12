@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '@/lib/api';
+import { getCloudScreenshotsByMovie, listCloudMediaMovies } from '@/lib/cloudApi';
 import Header from '@/components/layout/Header';
 import PosterThumb from '@/components/common/PosterThumb';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
+import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
 import type { MovieSummary, ScreenshotInfo } from '@shared/types/index';
+import AppIcon from '@/components/common/AppIcon';
 
 const PHOTO_TILE_HEIGHT = 124;
 const PHOTO_TILE_GAP = 12;
@@ -110,9 +113,11 @@ function PhotoTile({ movieId, movieTitle, media, onPreview }: { movieId: string;
   return (
     <button className={`photo-wall-tile${isPoster ? ' photo-wall-poster' : ''}`} onClick={() => onPreview(movieId, movieTitle, media)} title={`放大查看「${movieTitle}」`}>
       {media.src ? (
-        <img src={media.src} alt={isPoster ? `${movieTitle}海报` : `${movieTitle}截图`} />
+        <img src={media.src} alt={isPoster ? `${movieTitle}海报` : `${movieTitle}截图`} loading="lazy" decoding="async" />
       ) : isPoster ? (
         <PosterThumb movieId={movieId} hasPoster={Boolean(media.hasPoster)} alt={`${movieTitle}海报`} className="w-full h-full object-contain" />
+      ) : media.filename ? (
+        <ScreenshotThumbnail movieId={movieId} filename={media.filename} alt={`${movieTitle}截图`} className="w-full h-full object-cover" />
       ) : null}
       {isPoster && <span className="photo-wall-media-label">海报</span>}
       {!isPoster && <span className="photo-wall-screenshot-caption">{getScreenshotCaption(media)}</span>}
@@ -160,9 +165,7 @@ function PhotoWallGroup({ movie, initial, wallWidth, onPreview }: { movie: WallM
       {canCollapse && (
         <button className="photo-wall-expand" onClick={() => setExpanded((value) => !value)}>
           {expanded ? '收起图片' : `展开其余 ${hiddenCount} 张图片`}
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points={expanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'} />
-          </svg>
+          <AppIcon name={expanded ? 'chevronUp' : 'chevronDown'} />
         </button>
       )}
     </section>
@@ -206,17 +209,17 @@ function PhotoLightbox({ movieId, movieTitle, media, onClose, onPrevious, onNext
   return (
     <div className="photo-wall-lightbox" role="dialog" aria-modal="true" aria-label={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}预览`} onClick={onClose}>
       <button className="photo-wall-lightbox-close" onClick={onClose} aria-label="关闭预览">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        <AppIcon name="close" />
       </button>
       <button className="photo-wall-lightbox-nav previous" onClick={(event) => { event.stopPropagation(); onPrevious(); }} disabled={!hasPrevious} aria-label="上一张">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+        <AppIcon name="chevronLeft" />
       </button>
       <div className="photo-wall-lightbox-content" onClick={(event) => event.stopPropagation()}>
-        {imageUrl ? <img src={imageUrl} alt={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}`} /> : <span>{media.kind === 'poster' ? '请上传海报' : '图片加载失败'}</span>}
+        {imageUrl ? <img src={imageUrl} alt={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}`} decoding="async" /> : <span>{media.kind === 'poster' ? '请上传海报' : '图片加载失败'}</span>}
         {media.kind === 'screenshot' && <p>{getScreenshotCaption(media)}</p>}
       </div>
       <button className="photo-wall-lightbox-nav next" onClick={(event) => { event.stopPropagation(); onNext(); }} disabled={!hasNext} aria-label="下一张">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+        <AppIcon name="chevronRight" />
       </button>
     </div>
   );
@@ -238,9 +241,12 @@ export default function PhotoWall() {
     const loadPhotoWall = async (showLoading = false) => {
       if (showLoading && active) setLoading(true);
       try {
-        const summaries = await api.movie.list();
-        const groups = await Promise.all(summaries.map(async (movie: MovieSummary) => {
-          const screenshots = sortScreenshotsNewestFirst(await api.movie.listScreenshots(movie.id));
+        const [summaries, screenshotsByMovie] = await Promise.all([
+          listCloudMediaMovies(),
+          getCloudScreenshotsByMovie(),
+        ]);
+        const groups = summaries.map((movie: MovieSummary) => {
+          const screenshots = sortScreenshotsNewestFirst(screenshotsByMovie.get(movie.id) || []);
           return {
             id: movie.id,
             title: movie.title,
@@ -250,7 +256,6 @@ export default function PhotoWall() {
               ...screenshots.map((shot) => ({
                 key: shot.filename,
                 kind: 'screenshot' as const,
-                src: shot.thumbBase64,
                 filename: shot.filename,
                 episode: shot.episode,
                 hours: shot.hours,
@@ -259,7 +264,7 @@ export default function PhotoWall() {
               })),
             ],
           };
-        }));
+        });
         if (active) setMovies(groups);
       } catch (error) {
         console.error('加载照片墙失败', error);

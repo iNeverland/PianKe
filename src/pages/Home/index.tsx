@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import type { MovieSummary, WatchStatus, MediaType } from '@shared/types/index';
 import MovieGrid from '@/components/movie/MovieGrid';
 import Header from '@/components/layout/Header';
+import AppIcon from '@/components/common/AppIcon';
 import { GridSkeleton } from '@/components/common/LoadingSkeleton';
 
 const TYPE_OPTIONS: { label: string; value: MediaType | '' }[] = [
@@ -148,10 +149,14 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const [summary, recent] = await Promise.all([
-          api.library.getSummary(),
-          api.library.getRecentWatches(getRecentDays()),
-        ]);
+        // 最近观看只是完整摘要的派生结果；一次读取即可，避免冷启动时重复请求云端。
+        const summary = await api.library.getSummary();
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - getRecentDays());
+        const cutoffText = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
+        const recent = summary
+          .filter((movie) => (movie.latestWatchDate || '') >= cutoffText)
+          .sort((a, b) => (b.latestWatchDate || '').localeCompare(a.latestWatchDate || ''));
         setAllMovies(summary);
         setRecentMovies(recent);
       } catch (err) {
@@ -245,10 +250,7 @@ export default function Home() {
             onClick={() => { setSearchOpen(true); setTimeout(() => searchInputRef.current?.focus(), 100); }}
             aria-label="搜索"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-              <circle cx="10.5" cy="10.5" r="6.5" />
-              <path d="M15.5 15.5 21 21" />
-            </svg>
+            <AppIcon name="search" />
           </button>
           <input
             ref={searchInputRef}
@@ -269,9 +271,7 @@ export default function Home() {
             title="筛选"
             aria-label="筛选"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-              <path d="M4 5h16l-6.5 7.5V18l-3 1.5v-7L4 5Z" />
-            </svg>
+            <AppIcon name="filter" />
           </button>
           {filterOpen && (
             <div className="sort-menu !w-[320px] !p-3.5">
@@ -324,13 +324,7 @@ export default function Home() {
         {/* 排序 */}
         <div className="sort-dropdown" ref={sortRef}>
           <button className="tool-icon" onClick={() => setSortOpen(!sortOpen)} title="排序" aria-label="排序">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-              <path d="M4 6h16" />
-              <path d="M4 12h11" />
-              <path d="M4 18h7" />
-              <path d="m17 16 3 3 3-3" />
-              <path d="M20 6v13" />
-            </svg>
+            <AppIcon name="sort" />
           </button>
           {sortOpen && (
             <div className="sort-menu">
@@ -358,7 +352,7 @@ export default function Home() {
             <span className="section-title !mb-0">最近观看</span>
             <button className="section-link" onClick={() => navigate('/diary')}>
               全部
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="9 18 15 12 9 6"/></svg>
+              <AppIcon name="chevronRight" className="w-3 h-3" />
             </button>
           </div>
           <MovieGrid movies={recentMovies.slice(0, 5)} onStatusChange={handleStatusChange} onDelete={handleMovieDelete} />

@@ -1,6 +1,6 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
-import type { MovieSummary } from '../../../shared/types/index.js';
+import type { ScreenshotMoviePickerItem } from '../../../shared/types/index.js';
 
 export interface MoviePickerItem {
   id: string;
@@ -8,17 +8,19 @@ export interface MoviePickerItem {
   titleOriginal?: string;
   year: string;
   mediaType: string;
+  posterDataUrl?: string;
 }
 
 let moviePickerWindow: BrowserWindow | null = null;
 
-function toPickerItem(movie: MovieSummary): MoviePickerItem {
+function toPickerItem(movie: ScreenshotMoviePickerItem): MoviePickerItem {
   return {
     id: movie.id,
     title: movie.title,
     titleOriginal: movie.titleOriginal,
     year: movie.releaseDate?.substring(0, 4) || '',
     mediaType: movie.mediaType,
+    posterDataUrl: movie.posterDataUrl,
   };
 }
 
@@ -86,7 +88,7 @@ export function closeMoviePickerWindow(): void {
   moviePickerWindow?.close();
 }
 
-export function showMoviePickerWindow(baseDir: string, movies: MovieSummary[]): void {
+export function showMoviePickerWindow(baseDir: string, movies: ScreenshotMoviePickerItem[]): void {
   closeMoviePickerWindow();
 
   const sortedMovies = [...movies].sort((a, b) => {

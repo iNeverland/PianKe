@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import AppIcon from './AppIcon';
 
 interface CustomSelectProps {
   value: string;
@@ -30,17 +31,7 @@ export default function CustomSelect({ value, onChange, options, className = '' 
         onClick={() => setOpen(!open)}
       >
         <span className="custom-select-label">{selectedLabel}</span>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="custom-select-chevron"
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <AppIcon name="chevronDown" className="custom-select-chevron" />
       </button>
       {open && (
         <div className="custom-select-menu">
@@ -56,17 +47,7 @@ export default function CustomSelect({ value, onChange, options, className = '' 
             >
               {opt.label}
               {opt.value === value && (
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="custom-select-check"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+                <AppIcon name="check" className="custom-select-check" />
               )}
             </button>
           ))}

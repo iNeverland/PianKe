@@ -451,14 +451,13 @@ export function exportMoviesToExcel(filePath: string): ExcelExportResult {
     entry.watchTime || '',
     entry.rating,
     entry.review || '',
-    entry.images.length,
   ]));
   const watchRecordSheet = XLSX.utils.aoa_to_sheet([
-    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '短评', '关联图片数'],
+    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '短评'],
     ...watchRecordRows,
   ]);
-  watchRecordSheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 60 }, { wch: 12 }];
-  watchRecordSheet['!autofilter'] = { ref: `A1:G${Math.max(watchRecordRows.length + 1, 1)}` };
+  watchRecordSheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 60 }];
+  watchRecordSheet['!autofilter'] = { ref: `A1:F${Math.max(watchRecordRows.length + 1, 1)}` };
   XLSX.utils.book_append_sheet(workbook, watchRecordSheet, '追剧记录');
 
   try {
@@ -791,7 +790,7 @@ function writeScreenshotsMeta(screenshotsDir: string, meta: ScreenshotMetaMap): 
   fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
 }
 
-/** 列出所有截图，返回缩略图 base64 + 元数据 */
+/** 列出所有截图，只返回轻量元数据；缩略图由渲染进程按需单独加载。 */
 export function listScreenshots(id: string, cachedMeta?: ScreenshotMetaMap): ScreenshotInfo[] {
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
@@ -806,22 +805,9 @@ export function listScreenshots(id: string, cachedMeta?: ScreenshotMetaMap): Scr
   const meta = cachedMeta ?? readScreenshotsMeta(screenshotsDir);
 
   return originals.map(filename => {
-    const ext = path.extname(filename);
-    const baseName = path.basename(filename, ext);
-    const thumbFilename = `${baseName}_thumb${ext}`;
-    const thumbPath = path.join(screenshotsDir, thumbFilename);
-
-    let thumbBase64 = '';
-    if (fs.existsSync(thumbPath)) {
-      const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-      const data = fs.readFileSync(thumbPath);
-      thumbBase64 = `data:${mimeType};base64,${data.toString('base64')}`;
-    }
-
     const entry = meta[filename];
     return {
       filename,
-      thumbBase64,
       episode: entry?.episode,
       hours: entry?.hours,
       minutes: entry?.minutes,
@@ -920,5 +906,20 @@ export function getScreenshotBase64(id: string, filename: string): string | null
   const ext = path.extname(filename).toLowerCase();
   const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
   const data = fs.readFileSync(filePath);
+  return `data:${mimeType};base64,${data.toString('base64')}`;
+}
+
+/** 获取单张截图缩略图。供可见区域按需加载，避免列表一次传输全部 base64。 */
+export function getScreenshotThumbnailBase64(id: string, filename: string): string | null {
+  const movieDir = getMovieDirById(id);
+  const screenshotsDir = getScreenshotsDir(movieDir);
+  const ext = path.extname(filename).toLowerCase();
+  const baseName = path.basename(filename, ext);
+  const thumbPath = path.join(screenshotsDir, `${baseName}_thumb${ext}`);
+
+  if (!fs.existsSync(thumbPath)) return null;
+
+  const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+  const data = fs.readFileSync(thumbPath);
   return `data:${mimeType};base64,${data.toString('base64')}`;
 }

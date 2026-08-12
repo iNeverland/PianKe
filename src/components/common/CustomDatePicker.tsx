@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import AppIcon from './AppIcon';
 
 interface CustomDatePickerProps {
   value: string;
@@ -118,16 +119,7 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
     <div ref={ref} className={`custom-datepicker ${className}`}>
       <button type="button" className="custom-datepicker-trigger" onClick={openPicker}>
         <span className={value ? 'custom-datepicker-value' : 'custom-datepicker-placeholder'}>{displayText}</span>
-        <svg
-          viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-          className="custom-datepicker-icon"
-        >
-          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
+        <AppIcon name="calendar" className="custom-datepicker-icon" />
       </button>
 
       {open && (
@@ -137,17 +129,13 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
               {/* Year picker header */}
               <div className="custom-datepicker-header">
                 <button type="button" onClick={prevYearPage} className="custom-datepicker-nav" aria-label="前12年">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+                  <AppIcon name="chevronLeft" />
                 </button>
                 <span className="custom-datepicker-title">
                   {yearPage} – {yearPage + 11}
                 </span>
                 <button type="button" onClick={nextYearPage} className="custom-datepicker-nav" aria-label="后12年">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <AppIcon name="chevronRight" />
                 </button>
               </div>
               {/* Year grid */}
@@ -169,14 +157,10 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
               {/* Month picker header */}
               <div className="custom-datepicker-header">
                 <button type="button" onClick={prevYear} className="custom-datepicker-nav" aria-label="上年" title="上一年">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="11 18 5 12 11 6" /><polyline points="19 18 13 12 19 6" />
-                  </svg>
+                  <AppIcon name="doubleChevronLeft" />
                 </button>
                 <button type="button" onClick={prevMonth} className="custom-datepicker-nav" aria-label="上月" title="上个月">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6" />
-                  </svg>
+                  <AppIcon name="chevronLeft" />
                 </button>
                 <button
                   type="button"
@@ -187,14 +171,10 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
                   {viewYear}年 {MONTHS[viewMonth - 1]}
                 </button>
                 <button type="button" onClick={nextMonth} className="custom-datepicker-nav" aria-label="下月" title="下个月">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <AppIcon name="chevronRight" />
                 </button>
                 <button type="button" onClick={nextYear} className="custom-datepicker-nav" aria-label="下年" title="下一年">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="13 6 19 12 13 18" /><polyline points="5 6 11 12 5 18" />
-                  </svg>
+                  <AppIcon name="doubleChevronRight" />
                 </button>
               </div>
 

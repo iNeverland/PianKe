@@ -9,6 +9,7 @@ import CustomDatePicker from '@/components/common/CustomDatePicker';
 import Modal from '@/components/common/Modal';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
+import AppIcon from '@/components/common/AppIcon';
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const WEEK_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
@@ -384,7 +385,7 @@ export default function Diary() {
                   className="w-5 h-5 rounded flex items-center justify-center border-none cursor-pointer bg-transparent text-text-muted hover:text-text-primary transition-colors"
                   title="上一月" aria-label="上一月"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6"/></svg>
+                  <AppIcon name="chevronLeft" className="w-3.5 h-3.5" />
                 </button>
                 <h3 className="text-xs font-display font-semibold text-text-primary tracking-tight">
                   {heatmapData.viewYear}年{heatmapData.viewMonth}月 · 每日
@@ -396,7 +397,7 @@ export default function Diary() {
                   title={canGoNextMonth ? '下一月' : '已是当前月'}
                   aria-label={canGoNextMonth ? '下一月' : '已是当前月'}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6"/></svg>
+                  <AppIcon name="chevronRight" className="w-3.5 h-3.5" />
                 </button>
               </div>
               {/* 星期头 */}
@@ -432,7 +433,7 @@ export default function Diary() {
                   className="w-5 h-5 rounded flex items-center justify-center border-none cursor-pointer bg-transparent text-text-muted hover:text-text-primary transition-colors"
                   title="上一年" aria-label="上一年"
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6"/></svg>
+                  <AppIcon name="chevronLeft" className="w-3.5 h-3.5" />
                 </button>
                 <h3 className="text-xs font-display font-semibold text-text-primary tracking-tight">
                   {heatmapData.viewYear}年 · 月度
@@ -444,7 +445,7 @@ export default function Diary() {
                   title={canGoNextYear ? '下一年' : '已是当前年'}
                   aria-label={canGoNextYear ? '下一年' : '已是当前年'}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6"/></svg>
+                  <AppIcon name="chevronRight" className="w-3.5 h-3.5" />
                 </button>
               </div>
               <div className="grid grid-cols-4 gap-[3px]">

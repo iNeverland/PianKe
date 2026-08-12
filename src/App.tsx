@@ -5,8 +5,12 @@ import TitleBar from './components/layout/TitleBar';
 import Toast from './components/common/Toast';
 import UpdateDialog from './components/common/UpdateDialog';
 import { getShortcutConfig, toAccelerator } from './hooks/useScreenshotShortcut';
-import Welcome from './pages/Welcome';
-import type { LibraryInfo } from '@shared/types/index';
+import CloudAuth from './pages/CloudAuth';
+import { getCloudUser, subscribeCloudAuth, type CloudUser } from './lib/pocketbase';
+import { hydrateOfflineCloudCache } from './lib/cloudApi';
+import { getOfflineMedia } from './lib/offlineCache';
+import api from './lib/api';
+import type { MovieSummary, ScreenshotMoviePickerItem } from '@shared/types/index';
 
 const Home = lazy(() => import('./pages/Home'));
 const MovieDetail = lazy(() => import('./pages/MovieDetail'));
@@ -27,10 +31,63 @@ const PageLoader = () => (
   </div>
 );
 
+function blobToDataUrl(blob: Blob): Promise<string | undefined> {
+  return new Promise<string>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(blob);
+  }).then((dataUrl) => dataUrl || undefined);
+}
+
+async function getPickerPosterDataUrl(movie: MovieSummary): Promise<string | undefined> {
+  const filename = movie.posterThumbPath;
+  if (!filename) return undefined;
+
+  // 选择器优先读取 IndexedDB 中已同步的海报缩略图：不依赖网络、也不受独立窗口
+  // 登录态限制。key 与 cloudApi 的缩略图预热逻辑保持一致。
+  const ownerId = getCloudUser()?.id;
+  if (ownerId) {
+    const mediaKey = `movies:${movie.id}:${filename}:300x450`;
+    const cachedBlob = await getOfflineMedia(ownerId, mediaKey).catch(() => null);
+    if (cachedBlob) return blobToDataUrl(cachedBlob);
+  }
+
+  // 本地缓存尚未预热时才请求云端，并转成可跨 Electron 窗口显示的 data URL。
+  const url = await api.movie.getPosterUrl(movie.id, true).catch(() => null);
+  if (!url) return undefined;
+  if (url.startsWith('data:')) return url;
+  const blob = await fetch(url).then((response) => response.ok ? response.blob() : null).catch(() => null);
+  return blob ? blobToDataUrl(blob) : undefined;
+}
+
+async function toScreenshotPickerMovies(movies: MovieSummary[]): Promise<ScreenshotMoviePickerItem[]> {
+  return Promise.all(movies.map(async (movie) => ({
+    id: movie.id,
+    title: movie.title,
+    titleOriginal: movie.titleOriginal,
+    mediaType: movie.mediaType,
+    releaseDate: movie.releaseDate,
+    createdAt: movie.createdAt,
+    posterDataUrl: await getPickerPosterDataUrl(movie),
+  })));
+}
+
 export default function App() {
-  const [libraryLoaded, setLibraryLoaded] = useState(isPhotoWallPreview);
-  const [libraryName, setLibraryName] = useState<string>('');
+  const [cloudUser, setCloudUser] = useState<CloudUser | null>(getCloudUser);
+  const [libraryLoaded, setLibraryLoaded] = useState(isPhotoWallPreview || Boolean(getCloudUser()));
+  const [libraryName, setLibraryName] = useState<string>(() => getCloudUser()?.displayName || getCloudUser()?.email || '我的云端影院');
   const [checking, setChecking] = useState(!isPhotoWallPreview);
+
+  // 云端为唯一权威数据源；认证状态变化会自动切换到登录页或主应用。
+  useEffect(() => subscribeCloudAuth((user) => {
+    setCloudUser(user);
+    setLibraryLoaded(isPhotoWallPreview || Boolean(user));
+    setLibraryName(user?.displayName || user?.email || '我的云端影院');
+    setChecking(false);
+    // 缓存恢复不阻塞首屏；后续页面会优先从 IndexedDB 显示最近一次同步的数据。
+    if (user) void hydrateOfflineCloudCache();
+  }), []);
 
   // 初始化主题 + 标题栏颜色
   useEffect(() => {
@@ -47,22 +104,11 @@ export default function App() {
     }
   }, []);
 
-  // 监听双击 .pianke 文件打开库
+  // 云端模式不再自动打开本地 .pianke 库，保留事件监听以避免旧安装包触发异常。
   useEffect(() => {
     const api = window.electronAPI;
     if (api?.onOpenLibraryPath) {
-      api.onOpenLibraryPath((dirPath: string) => {
-        localStorage.setItem('film-log-library-path', dirPath);
-        api.library.reopen(dirPath).then((info: LibraryInfo | null) => {
-          if (info) {
-            setLibraryName(info.name);
-            setLibraryLoaded(true);
-          }
-          setChecking(false);
-        }).catch(() => {
-          setChecking(false);
-        });
-      });
+      api.onOpenLibraryPath(() => {});
     }
   }, []);
 
@@ -125,7 +171,10 @@ export default function App() {
               window.electronAPI?.showScreenToast?.('未检测到可捕获的屏幕');
               return;
             }
-            return window.electronAPI.startCrop(null, dataUrl);
+            // 选择器使用当前数据源，并将海报转为独立窗口也可显示的 data URL。
+            return api.movie.list()
+              .then(toScreenshotPickerMovies)
+              .then((movies) => window.electronAPI.startCrop(null, dataUrl, movies));
           })
           .catch((err) => {
             window.electronAPI?.showScreenToast?.(err?.message || '截图失败');
@@ -135,39 +184,6 @@ export default function App() {
 
     return () => { unsub?.(); };
   }, [libraryLoaded]);
-
-  useEffect(() => {
-    const savedPath = localStorage.getItem('film-log-library-path');
-    if (savedPath && window.electronAPI) {
-      // 旧版遗留的 'opened'/'created' 标记不再有效，清除后显示 Welcome 页面
-      if (savedPath === 'opened' || savedPath === 'created') {
-        localStorage.removeItem('film-log-library-path');
-        setChecking(false);
-        return;
-      }
-
-      // 使用实际路径直接重新打开，不弹对话框
-      window.electronAPI.library.reopen(savedPath)
-        .then((info) => {
-          if (info) {
-            setLibraryName(info.name);
-            setLibraryLoaded(true);
-          }
-          setChecking(false);
-        }).catch(() => {
-          // 路径无效，清除后显示 Welcome 页面
-          localStorage.removeItem('film-log-library-path');
-          setChecking(false);
-        });
-    } else {
-      setChecking(false);
-    }
-  }, []);
-
-  const handleLibraryOpen = (name: string) => {
-    setLibraryName(name);
-    setLibraryLoaded(true);
-  };
 
   if (checking) {
     return (
@@ -185,13 +201,11 @@ export default function App() {
     );
   }
 
-  if (!libraryLoaded) {
+  if (!libraryLoaded || (!cloudUser && !isPhotoWallPreview)) {
     return (
       <>
         <TitleBar />
-        <Welcome onLibraryOpen={handleLibraryOpen} />
-        <UpdateDialog />
-        <Toast />
+        <CloudAuth />
       </>
     );
   }

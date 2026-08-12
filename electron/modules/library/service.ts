@@ -11,7 +11,7 @@ import { migrateThumbnails } from '../movie/service.js';
 import { LibraryInfoSchema, MovieMetadataSchema, DiaryEntrySchema, WatchRecordSchema } from '../../../shared/schemas/index.js';
 import type { LibraryInfo, MovieSummary, DiaryEntry, WatchRecord } from '../../../shared/types/index.js';
 
-const LATEST_VERSION = 4;
+const LATEST_VERSION = 5;
 
 /** 迁移函数：每个函数处理一个版本的升级 */
 const MIGRATIONS: Record<number, (movie: any) => void> = {
@@ -66,17 +66,20 @@ export async function openLibrary(dirPath: string): Promise<LibraryInfo> {
     generateFolderIcon(dirPath).catch(err => console.error('[folder-icon] async generation failed:', err));
 
     const fromVersion = info.version || 1;
-    await loadAllMovies(fromVersion);
+    const migrationsComplete = await loadAllMovies(fromVersion);
     dataStore.setLoaded();
 
     // 缩略图迁移放到后台异步执行，不阻塞 UI 展示
     void migrateThumbnails().catch(err => console.error('[thumbnail] background migration failed:', err));
 
-    // 如果需要迁移，同步更新版本号（异步写回不阻塞）
-    if (fromVersion < LATEST_VERSION) {
+    // 只有全部电影数据已成功落盘迁移，才能提升库版本。
+    // 否则下次打开会安全地重试，绝不能把未拆分完的 diary.json 当作 v4 数据读取。
+    if (fromVersion < LATEST_VERSION && migrationsComplete) {
       info.version = LATEST_VERSION;
       fs.writeFileSync(libJsonPath, JSON.stringify(info, null, 2), 'utf-8');
       dataStore.setLibraryInfo(info);
+    } else if (fromVersion < LATEST_VERSION) {
+      console.error('[migration] library version was not upgraded because one or more movie migrations failed');
     }
 
     return info;
@@ -396,19 +399,54 @@ function getLatestWatchDate(movieId: string, allDiaries: Map<string, DiaryEntry[
   return latest.watchDate + (latest.watchTime ? 'T' + latest.watchTime : '');
 }
 
+function isMissingFileError(err: unknown): boolean {
+  return Boolean(err && typeof err === 'object' && (err as NodeJS.ErrnoException).code === 'ENOENT');
+}
+
+function isAutomaticDiaryEntry(item: any, automaticReviewPattern: RegExp): boolean {
+  return Boolean(
+    item && (
+      item.kind === 'progress' ||
+      item.kind === 'status' ||
+      item.rating === -1 ||
+      (item.rating === 0 && automaticReviewPattern.test(item.review || ''))
+    )
+  );
+}
+
+function normalizeAutomaticDiaryEntry(item: any): DiaryEntry {
+  const kind = item.kind === 'status' || /^状态变更为「/.test(item.review || '')
+    ? 'status'
+    : 'progress';
+  return {
+    ...item,
+    rating: -1,
+    images: Array.isArray(item.images) ? item.images : [],
+    kind,
+  };
+}
+
+function mergeWatchRecords(existing: WatchRecord[], migrated: WatchRecord[]): WatchRecord[] {
+  const entries = new Map<string, WatchRecord>();
+  for (const entry of [...existing, ...migrated]) {
+    entries.set(entry.id, entry);
+  }
+  return [...entries.values()];
+}
+
 // 加载所有影视数据到内存（并行 I/O，含版本迁移）
-async function loadAllMovies(fromVersion: number): Promise<void> {
+async function loadAllMovies(fromVersion: number): Promise<boolean> {
   const moviesDir = getMoviesDir();
   if (!fs.existsSync(moviesDir)) {
     dataStore.updateMovieCount();
-    return; // setLoaded() 由调用方 finally 保证
+    return true;
   }
 
   const entries = fs.readdirSync(moviesDir, { withFileTypes: true });
   const dirs = entries.filter(e => e.isDirectory());
   const needsMigration = fromVersion < LATEST_VERSION;
 
-  await Promise.all(dirs.map(async (entry) => {
+  const results = await Promise.all(dirs.map(async (entry) => {
     const movieDir = path.join(moviesDir, entry.name);
     const metadataPath = path.join(movieDir, 'metadata.json');
     const diaryPath = path.join(movieDir, 'diary.json');
@@ -418,13 +456,9 @@ async function loadAllMovies(fromVersion: number): Promise<void> {
       const raw = await fs.promises.readFile(metadataPath, 'utf-8');
       const parsed = JSON.parse(raw);
 
-      // 版本迁移在同一遍历中完成，避免二次 I/O
+      // 元数据迁移必须先落盘，避免库版本升级后仍保留旧结构。
       if (needsMigration) {
         migrateMovie(parsed, fromVersion);
-        // 异步写回，不阻塞加载
-        fs.promises.writeFile(metadataPath, JSON.stringify(parsed, null, 2), 'utf-8').catch(
-          err => console.error(`Migration write failed: ${entry.name}`, err)
-        );
       }
 
       const metadata = MovieMetadataSchema.parse(parsed);
@@ -432,8 +466,12 @@ async function loadAllMovies(fromVersion: number): Promise<void> {
 
       // 读取日记与追剧记录；旧库在此完成手动记录迁移。
       try {
-        const diaryRaw = await fs.promises.readFile(diaryPath, 'utf-8');
-        const diaryParsed = JSON.parse(diaryRaw);
+        let diaryParsed: unknown = [];
+        try {
+          diaryParsed = JSON.parse(await fs.promises.readFile(diaryPath, 'utf-8'));
+        } catch (err) {
+          if (!isMissingFileError(err)) throw err;
+        }
         if (!Array.isArray(diaryParsed)) throw new Error('Invalid diary data');
 
         if (fromVersion < 4) {
@@ -441,42 +479,100 @@ async function loadAllMovies(fromVersion: number): Promise<void> {
           const manualEntries: any[] = [];
           const automaticReviewPattern = /^(第\d+集 · 进度 \d+%|状态变更为「(在看|已看完|追剧中)」)/;
           for (const item of diaryParsed) {
-            const isAutomatic = item && (
-              item.kind === 'progress' ||
-              item.kind === 'status' ||
-              item.rating === -1 ||
-              (item.rating === 0 && automaticReviewPattern.test(item.review || ''))
-            );
-            if (isAutomatic) automaticEntries.push(item);
+            if (isAutomaticDiaryEntry(item, automaticReviewPattern)) {
+              automaticEntries.push(normalizeAutomaticDiaryEntry(item));
+            }
             else manualEntries.push(item);
           }
+
           const diaries = z.array(DiaryEntrySchema).parse(automaticEntries);
-          const records = z.array(WatchRecordSchema).parse(manualEntries.map(({ kind: _kind, ...rest }: any) => rest));
+          const migratedRecords = z.array(WatchRecordSchema).parse(
+            manualEntries.map(({ kind: _kind, ...rest }: any) => rest)
+          );
+
+          let existingRecords: WatchRecord[] = [];
+          try {
+            existingRecords = z.array(WatchRecordSchema).parse(
+              JSON.parse(await fs.promises.readFile(watchRecordsPath, 'utf-8'))
+            );
+          } catch (err) {
+            if (!isMissingFileError(err)) throw err;
+          }
+          const records = mergeWatchRecords(existingRecords, migratedRecords);
+
+          // 先写手动记录，后清理 diary.json。即使应用在两次写入之间退出，
+          // 下次迁移也会从旧 diary.json 与已有 records 按 ID 合并，确保不丢记录。
+          await fs.promises.writeFile(watchRecordsPath, JSON.stringify(records, null, 2), 'utf-8');
+          await fs.promises.writeFile(diaryPath, JSON.stringify(diaries, null, 2), 'utf-8');
+          if (needsMigration) {
+            await fs.promises.writeFile(metadataPath, JSON.stringify(parsed, null, 2), 'utf-8');
+          }
+
           dataStore.setDiary(metadata.id, diaries);
           dataStore.setWatchRecords(metadata.id, records);
-          fs.promises.writeFile(diaryPath, JSON.stringify(diaries, null, 2), 'utf-8').catch(
-            (err) => console.error(`Diary migration write failed: ${entry.name}`, err)
-          );
-          fs.promises.writeFile(watchRecordsPath, JSON.stringify(records, null, 2), 'utf-8').catch(
-            (err) => console.error(`Watch records migration write failed: ${entry.name}`, err)
-          );
         } else {
-          dataStore.setDiary(metadata.id, z.array(DiaryEntrySchema).parse(diaryParsed));
+          // 兼容 v4 分支中可能遗留的历史手动记录（此前异步迁移中断、或旧库残留）。
+          // 只保留合法自动日记，其余记录转存/合并进 watch-records.json，避免整片丢弃。
+          const diaries = z.array(DiaryEntrySchema).safeParse(diaryParsed);
+          if (!diaries.success) {
+            const automaticReviewPattern = /^(第\d+集 · 进度 \d+%|状态变更为「(在看|已看完|追剧中)」)/;
+            const automaticEntries: any[] = [];
+            const manualEntries: any[] = [];
+            for (const item of diaryParsed as any[]) {
+              if (isAutomaticDiaryEntry(item, automaticReviewPattern)) {
+                automaticEntries.push(normalizeAutomaticDiaryEntry(item));
+              } else {
+                manualEntries.push(item);
+              }
+            }
+            const cleanedDiaries = z.array(DiaryEntrySchema).parse(automaticEntries);
+            const migratedRecords = z.array(WatchRecordSchema).parse(
+              manualEntries.map(({ kind: _kind, ...rest }: any) => rest)
+            );
+
+            let existingRecords: WatchRecord[] = [];
+            try {
+              existingRecords = z.array(WatchRecordSchema).parse(
+                JSON.parse(await fs.promises.readFile(watchRecordsPath, 'utf-8'))
+              );
+            } catch (err) {
+              if (!isMissingFileError(err)) throw err;
+            }
+            const records = mergeWatchRecords(existingRecords, migratedRecords);
+
+            await fs.promises.writeFile(watchRecordsPath, JSON.stringify(records, null, 2), 'utf-8');
+            await fs.promises.writeFile(diaryPath, JSON.stringify(cleanedDiaries, null, 2), 'utf-8');
+            dataStore.setDiary(metadata.id, cleanedDiaries);
+            dataStore.setWatchRecords(metadata.id, records);
+          } else {
+            dataStore.setDiary(metadata.id, diaries.data);
+          }
           try {
             const recordsRaw = await fs.promises.readFile(watchRecordsPath, 'utf-8');
-            dataStore.setWatchRecords(metadata.id, z.array(WatchRecordSchema).parse(JSON.parse(recordsRaw)));
+            // WatchRecordSchema 会剥离旧版的 images。v4 → v5 必须将清理后的
+            // 数据写回独立的 watch-records.json，不能只停留在内存里。
+            const records = z.array(WatchRecordSchema).parse(JSON.parse(recordsRaw));
+            if (fromVersion < 5) {
+              await fs.promises.writeFile(watchRecordsPath, JSON.stringify(records, null, 2), 'utf-8');
+            }
+            dataStore.setWatchRecords(metadata.id, records);
           } catch {
             dataStore.setWatchRecords(metadata.id, []);
           }
         }
-      } catch {
+      } catch (err) {
+        console.error(`Failed to migrate/load diary data: ${entry.name}`, err);
         dataStore.setDiary(metadata.id, []);
         dataStore.setWatchRecords(metadata.id, []);
+        return !needsMigration;
       }
+      return true;
     } catch (err) {
       console.error(`Failed to load movie: ${entry.name}`, err);
+      return !needsMigration;
     }
   }));
 
   dataStore.updateMovieCount();
+  return results.every(Boolean);
 }

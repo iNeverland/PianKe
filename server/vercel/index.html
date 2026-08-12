@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>PianKe TMDB API</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        color: #f6f3ee;
+        background: radial-gradient(circle at 20% 0%, #302318 0%, transparent 36%), #151515;
+        font-family: "DM Sans", "Microsoft YaHei", system-ui, sans-serif;
+      }
+      main { width: min(100%, 560px); }
+      .status { display: flex; align-items: center; gap: 9px; color: #f5a623; font-size: 14px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 14px currentColor; }
+      h1 { margin: 16px 0 8px; font-size: clamp(34px, 7vw, 52px); letter-spacing: -0.06em; }
+      p { margin: 0; color: #a9a6a1; line-height: 1.7; }
+      .card { margin-top: 32px; padding: 20px; border: 1px solid #363432; border-radius: 16px; background: #1d1c1b; }
+      .card h2 { margin: 0 0 12px; font-size: 15px; }
+      code { display: block; padding: 10px 12px; margin-top: 8px; overflow-x: auto; border-radius: 8px; color: #e6e1d8; background: #111; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+      footer { margin-top: 22px; color: #6d6a66; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="status"><span class="dot"></span> 服务运行中</div>
+      <h1>PianKe<br />TMDB API</h1>
+      <p>这是片刻桌面应用使用的 TMDB 安全代理。TMDB 凭据仅保存在服务器环境变量中。</p>
+      <section class="card">
+        <h2>可用接口</h2>
+        <code>GET /api/search?q=星际穿越</code>
+        <code>GET /api/details/movie/157336</code>
+        <code>GET /api/poster?path=/...&amp;width=w500</code>
+      </section>
+      <footer>仅供 PianKe 应用使用</footer>
+    </main>
+  </body>
+</html>

@@ -1,4 +1,0 @@
-interface:
-  display_name: "PianKe 项目"
-  short_description: "片刻影视日记桌面应用的核心架构、数据模型与长期业务约束"
-  default_prompt: "使用 $pianke-project 实现或审查 PianKe 的核心功能。"

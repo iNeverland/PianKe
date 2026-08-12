@@ -1,9 +1,8 @@
 import { clipboard, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, type BrowserWindow } from 'electron';
-import { closeCropWindow, getCropData, getCropMovieId, startCropWindow } from './cropWindow.js';
+import { closeCropWindow, getCropData, getCropMovieId, getCropMovies, startCropWindow } from './cropWindow.js';
 import { closeMoviePickerWindow, showMoviePickerWindow } from './moviePickerWindow.js';
 import { showScreenToast } from './toast.js';
-import { addScreenshot, listMovies } from '../movie/service.js';
-import type { ScreenshotInfo } from '../../../shared/types/index.js';
+import type { ScreenshotInfo, ScreenshotMoviePickerItem } from '../../../shared/types/index.js';
 
 type MainWindowGetter = () => BrowserWindow | null;
 
@@ -92,8 +91,8 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     return source.thumbnail.toDataURL();
   });
 
-  ipcMain.handle('crop:start', (_event, movieId: string | null, fullScreenDataUrl: string) => {
-    startCropWindow(baseDir, movieId, fullScreenDataUrl);
+  ipcMain.handle('crop:start', (_event, movieId: string | null, fullScreenDataUrl: string, movies?: ScreenshotMoviePickerItem[]) => {
+    startCropWindow(baseDir, movieId, fullScreenDataUrl, Array.isArray(movies) ? movies : []);
   });
 
   ipcMain.handle('crop:get-data', () => getCropData());
@@ -101,10 +100,11 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
   ipcMain.handle('crop:save', async (_event, croppedDataUrl: string) => {
     const cropMovieId = getCropMovieId();
     if (!cropMovieId) {
+      const movies = getCropMovies();
       pendingCroppedDataUrl = croppedDataUrl;
       closeCropWindow();
       setTimeout(() => {
-        showMoviePicker(baseDir).catch((err) => {
+        showMoviePicker(baseDir, movies).catch((err) => {
           console.error('[screenshot] movie picker failed:', err);
           showScreenToast('影片选择器打开失败');
         });
@@ -147,7 +147,6 @@ async function saveScreenshotToMovie(
   croppedDataUrl: string,
   getMainWindow: MainWindowGetter
 ): Promise<ScreenshotInfo[]> {
-  const result = await addScreenshot(movieId, croppedDataUrl, '.png');
   const image = nativeImage.createFromDataURL(croppedDataUrl);
   if (!image.isEmpty()) {
     clipboard.writeImage(image);
@@ -155,15 +154,15 @@ async function saveScreenshotToMovie(
 
   const mainWindow = getMainWindow();
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send('screenshot:saved', result);
+    // 云端模式下由渲染进程通过已登录用户的 PocketBase 会话上传，避免主进程
+    // 持有用户访问令牌，也避免再次写入本地资源库。
+    mainWindow.webContents.send('screenshot:cropped', movieId, croppedDataUrl);
   }
 
-  return result;
+  return [];
 }
 
-async function showMoviePicker(baseDir: string): Promise<void> {
-  const movies = listMovies();
-
+async function showMoviePicker(baseDir: string, movies: ScreenshotMoviePickerItem[]): Promise<void> {
   if (!movies.length) {
     pendingCroppedDataUrl = null;
     showScreenToast('没有可选的影片');

@@ -17,9 +17,9 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/** 国家字段允许以 / 分隔多个国家；同一部影视中的重复国家只计一次。 */
+/** 国家字段兼容中文顿号、逗号和斜杠等多种分隔方式；同一部影视中的重复国家只计一次。 */
 function splitCountries(country: string): string[] {
-  return [...new Set(country.split(/[／/]/).map((item) => item.trim()).filter(Boolean))];
+  return [...new Set(country.split(/[、，,／/]/).map((item) => item.trim()).filter(Boolean))];
 }
 
 function getDiaryRatingBucket(rating: number): number | null {

@@ -26,9 +26,9 @@ export default {
         blue: 'var(--blue)',
       },
       fontFamily: {
-        display: ['Playfair Display', 'Noto Serif SC', 'Microsoft YaHei', 'serif'],
-        body: ['DM Sans', 'Microsoft YaHei', 'sans-serif'],
-        ui: ['DM Sans', 'sans-serif'],
+        display: ['Geist Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', 'sans-serif'],
+        body: ['Geist Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', 'sans-serif'],
+        ui: ['Geist Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', 'sans-serif'],
       },
       borderRadius: {
         card: 'var(--radius)',

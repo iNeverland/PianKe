@@ -10,7 +10,9 @@ import Modal from '@/components/common/Modal';
 import { showToast, showToastWithAction } from '@/components/common/Toast';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ScreenshotImage from '@/components/common/ScreenshotImage';
+import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
 import FinishWatchingModal, { type FinishWatchingData } from '@/components/movie/FinishWatchingModal';
+import AppIcon from '@/components/common/AppIcon';
 
 export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
@@ -82,7 +84,10 @@ export default function MovieDetail() {
   }, [movie?.mediaType, movie?.progress?.segments, movie?.progress?.totalEpisodes]);
 
   useEffect(() => {
-    if (id) loadMovie();
+    if (!id) return;
+    let active = true;
+    void loadMovie(() => active);
+    return () => { active = false; };
   }, [id]);
 
   // 截图列表变化时更新箭头状态
@@ -159,6 +164,20 @@ export default function MovieDetail() {
     return () => { unsub?.(); };
   }, []);
 
+  // 裁剪窗口不接触云端凭据；由当前已登录的渲染进程将图片上传到 PocketBase。
+  useEffect(() => {
+    const unsub = window.electronAPI?.onScreenshotCropped?.((movieId, dataUrl) => {
+      if (movieId !== id) return;
+      void api.movie.addScreenshot(movieId, dataUrl, '.png')
+        .then((updated) => {
+          setScreenshots(updated);
+          window.electronAPI?.showScreenToast?.('截图已保存，并已同步到云端');
+        })
+        .catch((err: any) => window.electronAPI?.showScreenToast?.(err?.message || '截图上传失败'));
+    });
+    return () => { unsub?.(); };
+  }, [id]);
+
   useEffect(() => {
     if (lightboxIndex === null) return;
     const handleKey = (e: KeyboardEvent) => {
@@ -174,28 +193,38 @@ export default function MovieDetail() {
     };
   }, [lightboxIndex, screenshots.length]);
 
-  async function loadMovie() {
+  async function loadMovie(isActive: () => boolean = () => true) {
     if (!id) return;
     try {
-      const [movieData, diaryData, watchRecordData] = await Promise.all([
-        api.movie.getById(id),
-        api.diary.getByMovie(id),
-        api.watchRecord.getByMovie(id),
-      ]);
+      // 首屏只依赖影片本身；日记、追剧记录和截图在下方独立补齐，避免其中一项
+      // 网络慢或失败时让整个详情页持续骨架屏。
+      const movieData = await api.movie.getById(id);
+      if (!isActive()) return;
       setMovie(movieData);
-      setDiaryEntries(diaryData);
-      setEntries(watchRecordData);
       // 加载海报
       if (movieData.posterPath) {
-        api.movie.getPosterUrl(id!).then(setPosterUrl).catch(() => {});
+        void api.movie.getPosterUrl(id, true).then((url) => {
+          if (isActive()) setPosterUrl(url);
+        }).catch(() => {});
+      } else {
+        setPosterUrl(null);
       }
       if (movieData.progress) {
         setProgressForm({ episode: movieData.progress.episode });
       }
-      // 加载截图
-      api.movie.listScreenshots(id!).then(setScreenshots).catch(() => {});
+
+      void Promise.allSettled([
+        api.diary.getByMovie(id),
+        api.watchRecord.getByMovie(id),
+        api.movie.listScreenshots(id),
+      ]).then(([diaries, records, shots]) => {
+        if (!isActive()) return;
+        if (diaries.status === 'fulfilled') setDiaryEntries(diaries.value);
+        if (records.status === 'fulfilled') setEntries(records.value);
+        if (shots.status === 'fulfilled') setScreenshots(shots.value);
+      });
     } catch (err: any) {
-      showToast(err.message || '加载失败');
+      if (isActive()) showToast(err.message || '加载失败');
     }
   }
 
@@ -464,7 +493,7 @@ export default function MovieDetail() {
         onClick={() => navigate(-1)}
         className="section-link mb-6"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6"/></svg>
+        <AppIcon name="chevronLeft" className="w-3.5 h-3.5" />
         返回
       </button>
 
@@ -473,12 +502,10 @@ export default function MovieDetail() {
         {/* Poster */}
         <div className="detail-poster">
           {posterUrl ? (
-            <img src={posterUrl} alt={movie.title} />
+            <img src={posterUrl} alt={movie.title} decoding="async" />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-text-muted bg-bg-elevated">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-16 h-16">
-                <rect x="2" y="2" width="20" height="20" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-              </svg>
+              <AppIcon name="image" className="w-16 h-16" />
             </div>
           )}
         </div>
@@ -489,10 +516,7 @@ export default function MovieDetail() {
           <div className="flex items-baseline gap-3 mb-6">
             <p className="detail-original-title !mb-0">{movie.title}</p>
             <button onClick={() => navigate(`/movie/${id}/edit`)} className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1" title="编辑" aria-label="编辑">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+              <AppIcon name="edit" className="w-4 h-4" />
             </button>
           </div>
           {movie.titleOriginal && (
@@ -547,7 +571,7 @@ export default function MovieDetail() {
                       className="inline-flex items-center cursor-pointer text-text-muted hover:text-text-secondary ml-1 gap-0.5"
                       onClick={() => setCastOpen(!castOpen)}
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 transition-transform ${castOpen ? 'rotate-180' : ''}`}><polyline points="6 9 12 15 18 9"/></svg>
+                      <AppIcon name="chevronDown" className={`w-3 h-3 transition-transform ${castOpen ? 'rotate-180' : ''}`} />
                       <span className="text-xs">{castOpen ? '收起' : '更多'}</span>
                     </span>
                   )}
@@ -625,7 +649,7 @@ export default function MovieDetail() {
               aria-label="向左滚动"
               className="absolute -left-3 top-[45%] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-bg-card border border-border text-text-secondary flex items-center justify-center shadow-md hover:bg-bg-elevated hover:text-text-primary transition-colors cursor-pointer"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6"/></svg>
+              <AppIcon name="chevronLeft" className="w-4 h-4" />
             </button>
           )}
 
@@ -648,15 +672,12 @@ export default function MovieDetail() {
                 className="relative aspect-video rounded-lg overflow-hidden border border-border cursor-pointer group bg-bg-elevated w-full"
                 onClick={() => setLightboxIndex(i)}
               >
-                {shot.thumbBase64 ? (
-                  <img src={shot.thumbBase64} alt="" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-text-muted">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-                      <rect x="2" y="2" width="20" height="20" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-                    </svg>
-                  </div>
-                )}
+                <ScreenshotThumbnail
+                  movieId={id!}
+                  filename={shot.filename}
+                  alt=""
+                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteScreenshot(shot.filename); }}
                   className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity border-none cursor-pointer"
@@ -705,7 +726,7 @@ export default function MovieDetail() {
                       className="w-5 h-5 rounded bg-accent text-white flex items-center justify-center border-none cursor-pointer flex-shrink-0"
                       title="保存" aria-label="保存时间戳"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+                      <AppIcon name="check" className="w-3 h-3" />
                     </button>
                   </div>
                 </div>
@@ -727,9 +748,7 @@ export default function MovieDetail() {
             onMouseLeave={() => setUploadHovered(false)}
           >
             <div className="aspect-video rounded-lg border border-dashed border-border flex flex-col items-center justify-center hover:border-accent transition-colors gap-1 w-full">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6 text-text-muted">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
+              <AppIcon name="add" className="w-6 h-6 text-text-muted" />
               <span className="text-xs text-text-muted">{uploadHovered ? 'Ctrl+V 粘贴' : '上传截图'}</span>
             </div>
             <input
@@ -749,7 +768,7 @@ export default function MovieDetail() {
               aria-label="向右滚动"
               className="absolute -right-3 top-[45%] -translate-y-1/2 z-20 w-8 h-8 rounded-full bg-bg-card border border-border text-text-secondary flex items-center justify-center shadow-md hover:bg-bg-elevated hover:text-text-primary transition-colors cursor-pointer"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="9 18 15 12 9 6"/></svg>
+              <AppIcon name="chevronRight" className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -767,9 +786,7 @@ export default function MovieDetail() {
             aria-label="关闭灯箱"
             className="absolute top-5 right-5 w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center border-none cursor-pointer hover:bg-white/20 transition-colors z-10"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+            <AppIcon name="close" className="w-5 h-5" />
           </button>
 
           {/* 删除按钮 */}
@@ -778,9 +795,7 @@ export default function MovieDetail() {
             className="absolute top-5 right-[4.5rem] w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center border-none cursor-pointer hover:bg-white/20 transition-colors z-10"
             title="删除" aria-label="删除截图"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
-            </svg>
+            <AppIcon name="trash" className="w-4 h-4" />
           </button>
 
           {/* 上一张 */}
@@ -790,9 +805,7 @@ export default function MovieDetail() {
               aria-label="上一张"
               className="absolute left-5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center border-none cursor-pointer hover:bg-white/20 transition-colors z-10"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                <polyline points="15 18 9 12 15 6"/>
-              </svg>
+              <AppIcon name="chevronLeft" className="w-5 h-5" />
             </button>
           )}
 
@@ -803,9 +816,7 @@ export default function MovieDetail() {
               aria-label="下一张"
               className="absolute right-5 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center border-none cursor-pointer hover:bg-white/20 transition-colors z-10"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
+              <AppIcon name="chevronRight" className="w-5 h-5" />
             </button>
           )}
 
@@ -818,7 +829,6 @@ export default function MovieDetail() {
           <ScreenshotImage
             movieId={id!}
             filename={screenshots[lightboxIndex].filename}
-            thumbSrc={screenshots[lightboxIndex].thumbBase64}
           />
         </div>
       )}
@@ -945,12 +955,10 @@ export default function MovieDetail() {
                   {/* 海报缩略图 */}
                   <div className="w-10 h-[60px] min-w-[40px] rounded overflow-hidden border border-border flex-shrink-0">
                     {posterUrl ? (
-                      <img src={posterUrl} alt="" className="w-full h-full object-cover" />
+                      <img src={posterUrl} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-text-muted bg-bg-elevated">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <rect x="2" y="2" width="20" height="20" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-                        </svg>
+                        <AppIcon name="image" className="w-4 h-4" />
                       </div>
                     )}
                   </div>
@@ -978,19 +986,14 @@ export default function MovieDetail() {
                           className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
                           title="编辑此追剧记录" aria-label="编辑此追剧记录"
                         >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
+                          <AppIcon name="edit" className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => setDeletingEntryId(entry.id)}
                           className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
                           title="删除此追剧记录" aria-label="删除此追剧记录"
                         >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
+                          <AppIcon name="close" className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1027,12 +1030,10 @@ export default function MovieDetail() {
                 <div className="flex items-start gap-3">
                   <div className="w-10 h-[60px] min-w-[40px] rounded overflow-hidden border border-border flex-shrink-0">
                     {posterUrl ? (
-                      <img src={posterUrl} alt="" className="w-full h-full object-cover" />
+                      <img src={posterUrl} alt="" className="w-full h-full object-cover" loading="lazy" decoding="async" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-text-muted bg-bg-elevated">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <rect x="2" y="2" width="20" height="20" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" />
-                        </svg>
+                        <AppIcon name="image" className="w-4 h-4" />
                       </div>
                     )}
                   </div>
@@ -1046,9 +1047,7 @@ export default function MovieDetail() {
                         className="text-text-muted hover:text-text-primary transition-colors bg-transparent border-none cursor-pointer p-1.5"
                         title="删除此观影日记" aria-label="删除此观影日记"
                       >
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
+                        <AppIcon name="close" className="w-4 h-4" />
                       </button>
                     </div>
                     {entry.review && (

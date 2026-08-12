@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from 'react';
+import AppIcon from './AppIcon';
 
 interface Props {
   children: ReactNode;
@@ -37,10 +38,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           padding: '40px',
           textAlign: 'center',
         }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-            style={{ width: 48, height: 48, color: 'var(--text-muted)', marginBottom: 20 }}>
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
+          <AppIcon name="warning" style={{ width: 48, height: 48, color: 'var(--text-muted)', marginBottom: 20 }} />
           <h2 style={{ fontSize: '1.2rem', fontWeight: 600, marginBottom: 8 }}>页面出现错误</h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: 24, maxWidth: 400 }}>
             {this.state.error?.message || '发生了未知错误'}

@@ -59,13 +59,15 @@ window.addEventListener('DOMContentLoaded', () => {
       btn.addEventListener('click', () => ipcRenderer.invoke('screenshot:movie-picker-select', movie.id));
       list.appendChild(btn);
 
-      ipcRenderer.invoke('movie:getPosterUrl', movie.id, true).then((posterDataUrl) => {
-        if (!posterDataUrl || token !== renderToken) return;
-        if (!btn.isConnected) return;
+      if (movie.posterDataUrl) {
         const posterEl = btn.querySelector('.poster');
-        if (!posterEl) return;
-        posterEl.innerHTML = '<img src="' + posterDataUrl + '" draggable="false">';
-      }).catch(() => {});
+        if (posterEl) {
+          const image = document.createElement('img');
+          image.src = movie.posterDataUrl;
+          image.draggable = false;
+          posterEl.replaceChildren(image);
+        }
+      }
     }
 
     requestAnimationFrame(updateArrows);

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   open: boolean;
@@ -6,9 +7,10 @@ interface ModalProps {
   title?: string;
   children: React.ReactNode;
   width?: string;
+  contentClassName?: string;
 }
 
-export default function Modal({ open, onClose, title, children, width = '560px' }: ModalProps) {
+export default function Modal({ open, onClose, title, children, width = '560px', contentClassName = '' }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -41,14 +43,14 @@ export default function Modal({ open, onClose, title, children, width = '560px' 
 
   if (!visible) return null;
 
-  return (
+  return createPortal(
     <div
       ref={overlayRef}
       className={`modal-overlay${closing ? ' closing' : ''}`}
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
       <div
-        className="modal-content"
+        className={`modal-content${contentClassName ? ` ${contentClassName}` : ''}`}
         style={{ width, maxWidth: '90vw' }}
       >
         {title && (
@@ -58,6 +60,7 @@ export default function Modal({ open, onClose, title, children, width = '560px' 
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

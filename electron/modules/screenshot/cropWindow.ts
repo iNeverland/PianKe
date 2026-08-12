@@ -1,9 +1,11 @@
 import { BrowserWindow, screen } from 'electron';
 import path from 'path';
+import type { ScreenshotMoviePickerItem } from '../../../shared/types/index.js';
 
 let cropWindow: BrowserWindow | null = null;
 let cropImageData: string | null = null;
 let cropMovieId: string | null = null;
+let cropMovies: ScreenshotMoviePickerItem[] = [];
 
 export function getCropData(): { imageDataUrl: string | null; movieId: string | null } {
   return {
@@ -16,13 +18,24 @@ export function getCropMovieId(): string | null {
   return cropMovieId;
 }
 
+/** 截图从非详情页发起时，由渲染进程传入当前数据源中的影片列表。 */
+export function getCropMovies(): ScreenshotMoviePickerItem[] {
+  return cropMovies;
+}
+
 export function closeCropWindow(): void {
   cropWindow?.close();
 }
 
-export function startCropWindow(baseDir: string, movieId: string | null, fullScreenDataUrl: string): void {
+export function startCropWindow(
+  baseDir: string,
+  movieId: string | null,
+  fullScreenDataUrl: string,
+  movies: ScreenshotMoviePickerItem[] = []
+): void {
   cropMovieId = movieId;
   cropImageData = fullScreenDataUrl;
+  cropMovies = movies;
 
   if (cropWindow && !cropWindow.isDestroyed()) {
     cropWindow.focus();
@@ -87,5 +100,6 @@ body{background:#000;overflow:hidden;cursor:crosshair;user-select:none;font-fami
     cropWindow = null;
     cropImageData = null;
     cropMovieId = null;
+    cropMovies = [];
   });
 }

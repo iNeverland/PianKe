@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
+import AppIcon from '@/components/common/AppIcon';
 import { getShortcutConfig, getShortcutKey, saveShortcutConfig, toDisplayText, toAccelerator, getDefaultConfig, type ShortcutConfig } from '@/hooks/useScreenshotShortcut';
 
 function getStoredTheme(): 'system' | 'dark' | 'light' {
@@ -13,16 +14,12 @@ export default function Settings() {
   const [theme, setTheme] = useState<'system' | 'dark' | 'light'>(getStoredTheme);
   const [screenshotShortcut, setScreenshotShortcut] = useState<ShortcutConfig>(getShortcutConfig);
   const [capturing, setCapturing] = useState(false);
-  const [libPath, setLibPath] = useState<string>('');
   const [appVersion, setAppVersion] = useState(__APP_VERSION__);
-  const [showCreate, setShowCreate] = useState(false);
-  const [createName, setCreateName] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const previousShortcutRef = useRef<ShortcutConfig | null>(null);
 
   useEffect(() => {
-    api.library.getPath().then((p) => setLibPath(p || '')).catch(() => {});
     api.updater.getState().then((state) => setAppVersion(state.currentVersion)).catch(() => {});
   }, []);
 
@@ -137,42 +134,6 @@ export default function Settings() {
     }
   }
 
-  async function handleSwitchLibrary() {
-    try {
-      const info = await api.library.open();
-      if (info) {
-        const rootPath = await api.library.getPath();
-        if (rootPath) {
-          localStorage.setItem('film-log-library-path', rootPath);
-        }
-        showToast('已切换资源库');
-        window.location.reload();
-      }
-    } catch (err: any) {
-      showToast(err.message || '切换失败');
-    }
-  }
-
-  async function handleCreateLibrary() {
-    if (!createName.trim()) {
-      showToast('请输入资源库名称');
-      return;
-    }
-    try {
-      const info = await api.library.create(createName.trim());
-      if (info) {
-        const rootPath = await api.library.getPath();
-        if (rootPath) {
-          localStorage.setItem('film-log-library-path', rootPath);
-        }
-        showToast('资源库已创建');
-        window.location.reload();
-      }
-    } catch (err: any) {
-      showToast(err.message || '创建失败');
-    }
-  }
-
   async function handleExportExcel() {
     if (exportingExcel) return;
     setExportingExcel(true);
@@ -212,50 +173,6 @@ export default function Settings() {
     <div>
       <Header title="设置" subtitle="管理你的影片库和偏好" showAdd={false} />
 
-      {/* 影片库 */}
-      <div className="settings-section">
-        <div className="settings-section-title">影片库</div>
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">当前库路径</div>
-            <div className="settings-row-desc">{libPath || '未加载'}</div>
-          </div>
-          <button className="btn btn-secondary btn-sm" onClick={handleSwitchLibrary}>
-            切换库
-          </button>
-        </div>
-        <div className="settings-row flex-wrap">
-          <div className={showCreate ? 'mb-3' : ''}>
-            <div className="settings-row-label">创建新库</div>
-            <div className="settings-row-desc">在指定位置创建一个新的影片库</div>
-          </div>
-          {showCreate ? (
-            <div className="flex gap-2 w-full">
-              <input
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="输入资源库名称"
-                className="form-input flex-1"
-                aria-label="资源库名称"
-                autoFocus
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateLibrary(); }}
-              />
-              <button className="btn btn-primary btn-sm" onClick={handleCreateLibrary}>
-                确定
-              </button>
-              <button className="btn btn-ghost btn-sm" onClick={() => { setShowCreate(false); setCreateName(''); }}>
-                取消
-              </button>
-            </div>
-          ) : (
-            <button className="btn btn-secondary btn-sm" onClick={() => setShowCreate(true)}>
-              新建
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* 外观 */}
       <div className="settings-section">
         <div className="settings-section-title">外观</div>
@@ -269,27 +186,21 @@ export default function Settings() {
               className={`theme-option${theme === 'system' ? ' active' : ''}`}
               onClick={() => applyTheme('system')}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
+              <AppIcon name="screen" className="w-3.5 h-3.5" />
               系统
             </button>
             <button
               className={`theme-option${theme === 'dark' ? ' active' : ''}`}
               onClick={() => applyTheme('dark')}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-              </svg>
+              <AppIcon name="moon" className="w-3.5 h-3.5" />
               深色
             </button>
             <button
               className={`theme-option${theme === 'light' ? ' active' : ''}`}
               onClick={() => applyTheme('light')}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-              </svg>
+              <AppIcon name="sun" className="w-3.5 h-3.5" />
               浅色
             </button>
           </div>

@@ -141,7 +141,6 @@ export async function markAsWatched(
       watchTime,
       rating: entryData.rating,
       review: entryData.review,
-      images: [],
     };
     const watchRecords = [...dataStore.getWatchRecords(movieId), watchRecord];
     const watchRecordsPath = getWatchRecordsPath(movieDir);

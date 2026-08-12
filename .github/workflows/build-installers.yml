@@ -6,7 +6,7 @@ on:
       - "*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -40,15 +40,85 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
-      - name: 构建并发布 Release
-        run: ${{ matrix.command }} --publish always
+      - name: 构建更新文件
+        run: ${{ matrix.command }} --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
 
-      - name: 上传安装包
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: ${{ matrix.path }}
+          path: |
+            ${{ matrix.path }}
+            release/*.zip
+            release/*.blockmap
+            release/latest*.yml
           if-no-files-found: error
           retention-days: 14
+
+  deploy-updates:
+    name: 上传更新服务器
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: PianKe-*
+          path: release
+          merge-multiple: true
+
+      - name: 配置部署密钥
+        env:
+          UPDATE_SSH_KEY: ${{ secrets.UPDATE_SSH_KEY }}
+          UPDATE_KNOWN_HOSTS: ${{ secrets.UPDATE_KNOWN_HOSTS }}
+          UPDATE_PORT: ${{ secrets.UPDATE_PORT }}
+        run: |
+          test -n "$UPDATE_SSH_KEY"
+          test -n "$UPDATE_KNOWN_HOSTS"
+          test -n "$UPDATE_PORT"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$UPDATE_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$UPDATE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: 验证发布配置
+        env:
+          UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+          UPDATE_USER: ${{ secrets.UPDATE_USER }}
+          UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
+        run: |
+          test -n "$UPDATE_BASE_URL"
+          test -n "$UPDATE_USER"
+          test -n "$UPDATE_PATH"
+          test -f release/latest.yml
+          test -f release/latest-mac.yml
+
+      - name: 上传安装包与差分文件
+        env:
+          UPDATE_HOST: ${{ secrets.UPDATE_HOST }}
+          UPDATE_USER: ${{ secrets.UPDATE_USER }}
+          UPDATE_PORT: ${{ secrets.UPDATE_PORT }}
+          UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
+        run: |
+          ssh -p "$UPDATE_PORT" "$UPDATE_USER@$UPDATE_HOST" "mkdir -p '$UPDATE_PATH'"
+          rsync --archive --verbose \
+            --rsh="ssh -p $UPDATE_PORT" \
+            --exclude 'latest.yml' \
+            --exclude 'latest-mac.yml' \
+            release/ "$UPDATE_USER@$UPDATE_HOST:$UPDATE_PATH/"
+
+      - name: 最后发布更新元数据
+        env:
+          UPDATE_HOST: ${{ secrets.UPDATE_HOST }}
+          UPDATE_USER: ${{ secrets.UPDATE_USER }}
+          UPDATE_PORT: ${{ secrets.UPDATE_PORT }}
+          UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
+        run: |
+          rsync --archive --verbose \
+            --rsh="ssh -p $UPDATE_PORT" \
+            release/latest.yml release/latest-mac.yml \
+            "$UPDATE_USER@$UPDATE_HOST:$UPDATE_PATH/"

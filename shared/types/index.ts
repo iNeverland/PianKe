@@ -55,6 +55,17 @@ export interface MovieSummary {
   rewatchCount?: number;
 }
 
+/** 截图后影片选择器使用的轻量数据，海报为可跨 Electron 窗口显示的数据 URL。 */
+export interface ScreenshotMoviePickerItem {
+  id: string;
+  title: string;
+  titleOriginal?: string;
+  mediaType: MediaType;
+  releaseDate: string;
+  createdAt?: string;
+  posterDataUrl?: string;
+}
+
 // 观影日记条目：仅记录系统自动写入的进度与状态变更
 export interface DiaryEntry {
   id: string;
@@ -73,7 +84,6 @@ export interface WatchRecord {
   watchTime?: string;
   rating: number;
   review?: string;
-  images: string[];
 }
 
 // 库信息
@@ -154,12 +164,46 @@ export interface SearchFilters {
 // 截图信息
 export interface ScreenshotInfo {
   filename: string;
-  thumbBase64: string;
   /** 截图时间戳元数据（用户手动填写） */
   episode?: number;
   hours?: number;
   minutes?: number;
   seconds?: number;
+}
+
+// TMDB 搜索结果（由自建代理服务器返回的标准化结构）
+export interface TmdbSearchResult {
+  id: number;
+  mediaType: '电影' | '剧集';
+  title: string;
+  titleOriginal: string;
+  releaseDate: string;
+  overview: string;
+  rating: number;
+  posterPath: string | null;
+}
+
+// TMDB 详情（标准化后可映射到 MovieMetadata）
+export interface TmdbDetails {
+  id: number;
+  mediaType: '电影' | '剧集';
+  title: string;
+  titleOriginal: string;
+  director: string;
+  cast: string[];
+  releaseDate: string;
+  country: string;
+  genre: string[];
+  runtime: number;
+  synopsis: string;
+  rating: number;
+  totalEpisodes: number | null;
+  posterPath: string | null;
+}
+
+// 代理服务返回的海报数据 URL（由主进程下载后生成）
+export interface TmdbPosterResult {
+  dataUrl: string | null;
 }
 
 // 月度总结
@@ -241,6 +285,7 @@ export const IPC_CHANNELS = {
   MOVIE_ADD_SCREENSHOT: 'movie:addScreenshot',
   MOVIE_DELETE_SCREENSHOT: 'movie:deleteScreenshot',
   MOVIE_GET_SCREENSHOT: 'movie:getScreenshot',
+  MOVIE_GET_SCREENSHOT_THUMBNAIL: 'movie:getScreenshotThumbnail',
   MOVIE_UPDATE_SCREENSHOT_INFO: 'movie:updateScreenshotInfo',
 
   // 自动观影日记
@@ -271,6 +316,11 @@ export const IPC_CHANNELS = {
   STATS_MONTHLY_TREND: 'stats:monthlyTrend',
   STATS_MONTH_SUMMARY: 'stats:monthSummary',
   STATS_DIARY_CALENDAR: 'stats:diaryCalendar',
+
+  // TMDB 代理（经自建服务器）
+  TMDB_SEARCH: 'tmdb:search',
+  TMDB_GET_DETAILS: 'tmdb:getDetails',
+  TMDB_GET_POSTER: 'tmdb:getPoster',
 
   // 应用更新
   UPDATE_GET_STATE: 'update:getState',

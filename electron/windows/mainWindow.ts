@@ -11,8 +11,8 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 960,
-    minHeight: 640,
+    minWidth: 800,
+    minHeight: 500,
     show: false,
     frame: false,
     titleBarStyle: 'hidden',

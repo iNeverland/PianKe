@@ -7,6 +7,7 @@ import type {
 } from '@shared/types/index';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import Header from '@/components/layout/Header';
+import AppIcon from '@/components/common/AppIcon';
 
 // 图表配色 — 从橙色调出发的暖→冷序列
 const BAR_COLORS = [
@@ -320,36 +321,28 @@ export default function Stats() {
       <div className="stats-row mb-5">
         <div className="stat-card">
           <div className="stat-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>
-            </svg>
+            <AppIcon name="stats" className="w-5 h-5" />
           </div>
           <div className="stat-value">{overview?.totalMovies ?? 0}</div>
           <div className="stat-label">影视总数</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-            </svg>
+            <AppIcon name="clock" className="w-5 h-5" />
           </div>
           <div className="stat-value">{overview?.totalHours ?? 0}<span className="stat-unit">h</span></div>
           <div className="stat-label">观影时长</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-            </svg>
+            <AppIcon name="star" className="w-5 h-5" />
           </div>
           <div className="stat-value">{overview?.avgPersonalRating ?? '—'}<span className="stat-unit">/10</span></div>
           <div className="stat-label">平均评分</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-            </svg>
+            <AppIcon name="diary" className="w-5 h-5" />
           </div>
           <div className="stat-value">{overview?.mostWatchedGenre?.slice(0, 2).join(' / ') || '—'}</div>
           <div className="stat-label">最爱类型</div>

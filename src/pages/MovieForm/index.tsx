@@ -2,11 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
-import type { MediaType, WatchStatus, Progress } from '@shared/types/index';
+import type { MediaType, WatchStatus, Progress, TmdbSearchResult } from '@shared/types/index';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import CustomSelect from '@/components/common/CustomSelect';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
+import AppIcon from '@/components/common/AppIcon';
 
 const GENRE_OPTIONS = [
   '动作', '冒险', '喜剧', '犯罪',
@@ -28,7 +29,7 @@ const EMPTY_FORM = {
   runtime: 0,
   synopsis: '',
   rating: 0,
-  status: '已看完' as WatchStatus,
+  status: '想看' as WatchStatus,
   progress: null as Progress | null,
 };
 
@@ -47,6 +48,10 @@ export default function MovieForm() {
   const [tagInput, setTagInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialForm, setInitialForm] = useState<string>('');
+  const [tmdbQuery, setTmdbQuery] = useState('');
+  const [tmdbResults, setTmdbResults] = useState<TmdbSearchResult[]>([]);
+  const [tmdbSearching, setTmdbSearching] = useState(false);
+  const [tmdbImportingId, setTmdbImportingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -183,6 +188,65 @@ export default function MovieForm() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  async function handleTmdbSearch() {
+    const query = tmdbQuery.trim();
+    if (!query) {
+      showToast('请输入片名后再搜索');
+      return;
+    }
+    try {
+      setTmdbSearching(true);
+      setTmdbResults(await api.tmdb.search(query));
+    } catch (err: any) {
+      showToast(err.message || 'TMDB 搜索失败');
+    } finally {
+      setTmdbSearching(false);
+    }
+  }
+
+  async function handleTmdbImport(result: TmdbSearchResult) {
+    try {
+      setTmdbImportingId(result.id);
+      const details = await api.tmdb.getDetails(result.mediaType, result.id);
+      const progress = details.totalEpisodes
+        ? { episode: 0, totalEpisodes: details.totalEpisodes }
+        : null;
+      setForm((current) => ({
+        ...current,
+        title: details.title,
+        titleOriginal: details.titleOriginal || '',
+        mediaType: details.mediaType,
+        director: details.director || '',
+        cast: details.cast.join('、'),
+        releaseDate: details.releaseDate,
+        country: details.country,
+        genre: details.genre,
+        runtime: details.runtime,
+        synopsis: details.synopsis,
+        rating: details.rating,
+        progress,
+      }));
+
+      if (details.posterPath) {
+        const poster = await api.tmdb.getPoster(details.posterPath);
+        if (poster.dataUrl) {
+          const imageType = poster.dataUrl.match(/^data:image\/([^;]+)/)?.[1];
+          const ext = imageType === 'png' ? '.png' : imageType === 'webp' ? '.webp' : '.jpg';
+          setPosterBase64(poster.dataUrl);
+          setPosterExt(ext);
+          setPosterPreview(poster.dataUrl);
+          setExistingPosterUrl(null);
+        }
+      }
+      setTmdbResults([]);
+      showToast('已填充 TMDB 信息，请确认后保存');
+    } catch (err: any) {
+      showToast(err.message || '导入 TMDB 信息失败');
+    } finally {
+      setTmdbImportingId(null);
+    }
+  }
+
   function toggleGenre(g: string) {
     setForm((f) => ({
       ...f,
@@ -240,7 +304,7 @@ export default function MovieForm() {
       <Header title={isEditing ? '编辑影视' : '添加影视'} subtitle={isEditing ? '修改影视信息与进度' : '记录一部新的影视'} showAdd={false} />
 
       <button onClick={handleGoBack} className="section-link mb-6">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6"/></svg>
+        <AppIcon name="chevronLeft" className="w-3.5 h-3.5" />
         返回
       </button>
 
@@ -262,11 +326,7 @@ export default function MovieForm() {
               <img src={shownPoster} alt="海报预览" className="form-poster-img" />
             ) : (
               <div className="form-poster-empty">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" className="w-12 h-12">
-                  <rect x="3" y="3" width="18" height="18" rx="3" ry="3"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
+                <AppIcon name="image" className="w-12 h-12" />
                 <span>{isPosterDragging ? '松开以上传海报' : '点击或拖入图片上传'}</span>
               </div>
             )}
@@ -282,6 +342,46 @@ export default function MovieForm() {
 
         {/* 右栏：表单字段 */}
         <div className="form-fields-col">
+          <div className="form-section-card">
+            <div className="form-section-title">从 TMDB 导入</div>
+            <div className="flex gap-2">
+              <input
+                type="search"
+                value={tmdbQuery}
+                onChange={(e) => setTmdbQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleTmdbSearch(); } }}
+                className="form-input flex-1"
+                placeholder="输入片名，例如：星际穿越"
+                aria-label="搜索 TMDB"
+              />
+              <button type="button" onClick={() => void handleTmdbSearch()} disabled={tmdbSearching} className="btn btn-secondary whitespace-nowrap">
+                {tmdbSearching ? '搜索中...' : '搜索'}
+              </button>
+            </div>
+            {tmdbResults.length > 0 && (
+              <div className="mt-3 max-h-64 overflow-y-auto border-t border-border divide-y divide-border">
+                {tmdbResults.map((result) => (
+                  <button
+                    key={`${result.mediaType}-${result.id}`}
+                    type="button"
+                    onClick={() => void handleTmdbImport(result)}
+                    disabled={tmdbImportingId !== null}
+                    className="w-full flex items-center justify-between gap-3 py-2.5 text-left bg-transparent border-none cursor-pointer hover:text-accent disabled:cursor-wait"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{result.title}</span>
+                      <span className="block text-xs text-text-muted truncate">{result.titleOriginal || '无原始标题'} · {result.releaseDate.slice(0, 4) || '日期未知'} · {result.mediaType}</span>
+                    </span>
+                    <span className="text-xs text-text-muted whitespace-nowrap">{tmdbImportingId === result.id ? '导入中...' : `${result.rating || '—'} 分`}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!tmdbSearching && tmdbQuery.trim() && tmdbResults.length === 0 && (
+              <p className="mt-2 text-xs text-text-muted">搜索后会在此处显示结果。</p>
+            )}
+          </div>
+
           {/* 基本信息 */}
           <div className="form-section-card basic-info-card">
             <div className="form-section-title">基本信息</div>
@@ -388,7 +488,7 @@ export default function MovieForm() {
             }}>
               <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${form.progress ? 'bg-accent border-accent' : 'border-border'}`}>
                 {form.progress && (
-                  <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <AppIcon name="check" className="w-2.5 h-2.5" />
                 )}
               </div>
               多集

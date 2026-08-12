@@ -63,8 +63,10 @@ app.whenReady().then(() => {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           process.env.VITE_DEV_SERVER_URL
-            ? "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:5173; img-src 'self' data: https:"
-            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:",
+            // 海报、截图与头像从 IndexedDB 读取时会以 blob: URL 呈现。它们仅来自
+            // 当前账号写入的本地缓存，必须显式放行，否则会出现卡片留白。
+            ? "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:5173; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:5173 https://pb.astara.space"
+            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src https://pb.astara.space",
         ],
       },
     });

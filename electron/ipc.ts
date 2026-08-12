@@ -5,6 +5,7 @@ import { registerWatchRecordHandlers } from './modules/watchRecord/handler.js';
 import { registerWatchlistHandlers } from './modules/watchlist/handler.js';
 import { registerStatsHandlers } from './modules/stats/handler.js';
 import { registerUpdateHandlers } from './modules/updater/handler.js';
+import { registerTmdbHandlers } from './modules/tmdb/handler.js';
 
 export function registerAllHandlers(): void {
   registerLibraryHandlers();
@@ -13,5 +14,6 @@ export function registerAllHandlers(): void {
   registerWatchRecordHandlers();
   registerWatchlistHandlers();
   registerStatsHandlers();
+  registerTmdbHandlers();
   registerUpdateHandlers();
 }

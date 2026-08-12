@@ -2,8 +2,8 @@ import type {
   LibraryInfo, MovieSummary, MovieMetadata, DiaryEntry, WatchRecord,
   StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre,
   StatsByRating, StatsByCountry, StatsMonthlyTrend, MonthSummary,
-  DiaryTimelineMonth, DiaryCalendarEntry, ScreenshotInfo,
-  AppUpdateState, UpdateCheckSource,
+  DiaryTimelineMonth, DiaryCalendarEntry, ScreenshotInfo, ScreenshotMoviePickerItem,
+  AppUpdateState, UpdateCheckSource, TmdbSearchResult, TmdbDetails, TmdbPosterResult,
 } from '@shared/types/index';
 
 export interface ElectronAPI {
@@ -29,8 +29,9 @@ export interface ElectronAPI {
   showScreenToast: (message: string, duration?: number) => Promise<void>;
   getDesktopSources: () => Promise<{ id: string; name: string; thumb: string }[]>;
   getPrimaryScreenSnapshot: () => Promise<string | null>;
-  startCrop: (movieId: string | null, fullScreenDataUrl: string) => Promise<void>;
+  startCrop: (movieId: string | null, fullScreenDataUrl: string, movies?: ScreenshotMoviePickerItem[]) => Promise<void>;
   onScreenshotSaved: (callback: (screenshots: ScreenshotInfo[]) => void) => () => void;
+  onScreenshotCropped: (callback: (movieId: string, dataUrl: string) => void) => () => void;
   library: {
     open: () => Promise<LibraryInfo | null>;
     reopen: (dirPath: string) => Promise<LibraryInfo | null>;
@@ -59,7 +60,13 @@ export interface ElectronAPI {
     addScreenshot: (id: string, base64Data: string, ext: string) => Promise<ScreenshotInfo[]>;
     deleteScreenshot: (id: string, filename: string) => Promise<ScreenshotInfo[]>;
     getScreenshot: (id: string, filename: string) => Promise<string | null>;
+    getScreenshotThumbnail: (id: string, filename: string) => Promise<string | null>;
     updateScreenshotInfo: (id: string, filename: string, info: { episode?: number; hours?: number; minutes?: number; seconds?: number }) => Promise<ScreenshotInfo[]>;
+  };
+  tmdb: {
+    search: (query: string) => Promise<TmdbSearchResult[]>;
+    getDetails: (mediaType: '电影' | '剧集', id: number) => Promise<TmdbDetails>;
+    getPoster: (posterPath: string) => Promise<TmdbPosterResult>;
   };
   diary: {
     getByMovie: (movieId: string) => Promise<DiaryEntry[]>;

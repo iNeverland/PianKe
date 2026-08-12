@@ -79,6 +79,10 @@ export function registerMovieHandlers(): void {
     return service.getScreenshotBase64(id, filename);
   });
 
+  ipcMain.handle(IPC_CHANNELS.MOVIE_GET_SCREENSHOT_THUMBNAIL, async (_event, id: string, filename: string) => {
+    return service.getScreenshotThumbnailBase64(id, filename);
+  });
+
   ipcMain.handle(IPC_CHANNELS.MOVIE_UPDATE_SCREENSHOT_INFO, async (_event, id: string, filename: string, info: Record<string, unknown>) => {
     return service.updateScreenshotInfo(id, filename, info as { episode?: number; hours?: number; minutes?: number; seconds?: number });
   });
