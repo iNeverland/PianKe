@@ -6,7 +6,8 @@ on:
       - "*"
 
 permissions:
-  contents: read
+  # GitHub Release 需要创建版本页并上传长期留存的安装包附件。
+  contents: write
 
 jobs:
   build:
@@ -105,7 +106,9 @@ jobs:
           UPDATE_PATH: ${{ secrets.UPDATE_PATH }}
         run: |
           ssh -p "$UPDATE_PORT" "$UPDATE_USER@$UPDATE_HOST" "mkdir -p '$UPDATE_PATH'"
-          rsync --archive --verbose \
+          # 仅更新服务器目录执行 --delete。latest*.yml 被排除，因此会在下一步
+          # 最后原子式发布；GitHub Release 和本地构建产物均不会受到影响。
+          rsync --archive --verbose --delete \
             --rsh="ssh -p $UPDATE_PORT" \
             --exclude 'latest.yml' \
             --exclude 'latest-mac.yml' \
@@ -122,3 +125,28 @@ jobs:
             --rsh="ssh -p $UPDATE_PORT" \
             release/latest.yml release/latest-mac.yml \
             "$UPDATE_USER@$UPDATE_HOST:$UPDATE_PATH/"
+
+  github-release:
+    name: 创建 GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          pattern: PianKe-*
+          path: release
+          merge-multiple: true
+
+      - name: 创建 Release 并上传安装包
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/*.exe
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest.yml
+            release/latest-mac.yml

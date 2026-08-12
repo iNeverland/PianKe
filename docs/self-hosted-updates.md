@@ -80,6 +80,8 @@ git push origin v1.3.0
 
 工作流会上传 Windows 的 `latest.yml`、安装包和 `.blockmap`，以及 macOS 的 `latest-mac.yml`、`.zip` 与 `.dmg`。安装包和差分文件先上传，最后才发布 `latest*.yml`，因此客户端不会提前发现一个尚未完整上传的版本。
 
+更新服务器的目录会通过 `rsync --delete` 自动清理为**当前版本的安装包与差分文件**，再保留 `latest.yml`、`latest-mac.yml`；它不会影响 GitHub。每个版本的完整安装包也会同时创建为 GitHub Release 附件，供需要历史版本的用户下载。
+
 发布完成后确认以下地址可匿名访问：
 
 ```text
