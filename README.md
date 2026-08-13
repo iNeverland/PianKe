@@ -98,6 +98,10 @@ npm run dev
 
 所有业务集合按 `owner` 与当前登录账户隔离，海报和截图使用受保护的文件访问策略。生产环境请使用 HTTPS，并为 PocketBase 做数据库和文件目录备份。
 
+#### 邮箱验证码
+
+注册和修改密码通过 PocketBase hook 发送邮箱验证码。部署时除执行迁移外，还要把 [server/pocketbase/pb_hooks/email_verification.pb.js](server/pocketbase/pb_hooks/email_verification.pb.js) 放入生产 PocketBase 的 `pb_hooks/` 目录并重启服务；在 PocketBase 管理后台的“设置 → 邮件设置”配置可用 SMTP 和发件人。验证码有效期为 10 分钟，发送间隔为 30 秒，最多可尝试 5 次。
+
 ### TMDB 代理（可选）
 
 TMDB Token 必须只保存在服务端，不能放入 Electron 客户端或仓库。

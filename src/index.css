@@ -213,7 +213,13 @@ textarea,
   border-radius: 2px;
 }
 /* 表单元素使用底部高亮代替外框 */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[contenteditable="true"]:focus-visible,
 .form-input:focus-visible,
+.review-textarea:focus-visible,
+.form-tag-input:focus-visible,
 .custom-select-trigger:focus-visible,
 .custom-datepicker-trigger:focus-visible,
 .search-bar.open input:focus-visible {
@@ -458,7 +464,7 @@ textarea,
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease;
   z-index: 2;
 }
-.sidebar-profile-entry img { display: block; width: 62px; height: 62px; margin: 0 auto; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; object-fit: cover; background: var(--bg-card); box-shadow: var(--shadow-md); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease; }
+.sidebar-profile-entry img { display: block; width: 50px; height: 50px; margin: 0 auto; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; object-fit: cover; background: var(--bg-card); box-shadow: var(--shadow-md); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease; }
 .sidebar-profile-entry:hover img { transform: scale(1.1); box-shadow: 0 5px 16px rgba(0, 0, 0, 0.16); }
 .sidebar-profile-entry.active img { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md); }
 .sidebar-profile-entry .nav-tooltip { white-space: nowrap; }
@@ -3246,14 +3252,13 @@ body { background: var(--bg-deep); font-size: 14px; line-height: 20px; }
 .btn { min-height: 32px; height: 32px; padding: 6px 16px; border: 1px solid transparent; border-radius: 4px; font-size: 14px; font-weight: 600; line-height: 20px; transition: background var(--transition), border-color var(--transition), color var(--transition), transform 83ms ease; }
 .btn-sm { min-height: 28px; height: 28px; padding: 4px 12px; font-size: 12px; line-height: 16px; }
 .btn-primary { background: var(--accent); border-color: var(--accent); }
-.btn-primary:hover { background: color-mix(in srgb, var(--accent) 88%, #000); filter: none; }
+.btn-primary:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); filter: none; }
 .btn-primary:active { background: color-mix(in srgb, var(--accent) 78%, #000); transform: scale(0.98); filter: none; }
 .btn-secondary { background: var(--bg-elevated); border-color: var(--border); box-shadow: none; }
-.btn-secondary:hover { background: var(--bg-card-hover); border-color: var(--text-muted); }
-/* `--bg-sidebar-item` 是深色表面。浅色主题中若只切换背景会形成黑底黑字，
-   所有使用该表面的文字按钮都必须同步切换为高对比前景色。 */
-.btn-ghost:hover:not(:disabled) { background: var(--bg-sidebar-item); color: var(--text-sidebar-active); }
+.btn-secondary:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-color: var(--accent); }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .btn-danger { background: var(--red); border-color: var(--red); }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-color: var(--accent); filter: none; }
 
 /* 内容卡仅用于需要分组的统计、表单、图表；列表改为清晰的分隔行。 */
 .stats-row { gap: 12px; margin-bottom: 32px; }
@@ -3303,7 +3308,7 @@ body { background: var(--bg-deep); font-size: 14px; line-height: 20px; }
 .row-item:hover { margin: 0; padding: 12px; background: var(--bg-card-hover); border-color: var(--border-light); }
 .row-item-poster { border-radius: 4px; }
 .quick-action-btn { min-height: 28px; padding: 4px 10px; border-radius: 4px; font-size: 12px; line-height: 16px; }
-.quick-action-btn:hover:not(:disabled) { background: var(--bg-sidebar-item); color: var(--text-sidebar-active); border-color: var(--border); }
+.quick-action-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); border-color: var(--accent); }
 .quick-action-btn.primary { background: var(--accent); border-color: var(--accent); }
 
 /* 临时表面使用 Acrylic，并采用 8px 顶层圆角与高层级阴影。 */
@@ -3314,17 +3319,65 @@ body { background: var(--bg-deep); font-size: 14px; line-height: 20px; }
 .toast-content { background: color-mix(in srgb, var(--bg-elevated) 84%, transparent); border-color: var(--border); border-radius: 8px; box-shadow: var(--shadow-lg); backdrop-filter: blur(24px) saturate(1.25); -webkit-backdrop-filter: blur(24px) saturate(1.25); }
 .sort-menu { padding: 4px; }
 .sort-item { min-height: 32px; padding: 8px; border-radius: 4px; font-size: 14px; line-height: 20px; font-weight: 400; }
-.sort-item:hover,
-.sort-item.active { background: var(--bg-sidebar-item); color: var(--text-sidebar-active); }
+.sort-item:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
+.sort-item.active { background: var(--accent); color: #fff; }
+.sort-item.active:hover { background: var(--accent); color: #fff; }
 .tool-icon,
 .sort-trigger { width: 32px; height: 32px; border-radius: 4px; }
 .tool-icon:hover,
-.sort-trigger:hover { background: var(--bg-sidebar-item); color: var(--text-sidebar-active); }
+.sort-trigger:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .tool-icon.active { background: var(--accent-dim); color: var(--accent); }
 .search-bar.open input { height: 32px; border-radius: 4px; background: var(--bg-elevated); }
 .filter-chip { color: var(--text-secondary); }
-.filter-chip:hover { background: var(--bg-sidebar-item); color: var(--text-sidebar-active); }
+.filter-chip:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); color: var(--accent); }
 .filter-chip.active { background: var(--accent); color: #fff; }
+.filter-chip.active:hover { background: var(--accent); color: #fff; }
+
+/* 选择器与轻量操作按钮共享主色 hover 状态；已选项保持实心主色。 */
+.custom-select-item:hover,
+.custom-datepicker-day:hover:not(.outside),
+.custom-datepicker-year:hover,
+.custom-datepicker-nav:hover,
+.custom-datepicker-title-btn:hover,
+.status-btn:hover,
+.tag-selectable:hover,
+.form-poster-btn:hover,
+.context-menu-item:hover,
+.modal-close-btn:hover,
+.profile-dialog-close:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.custom-select-item.active,
+.custom-select-item.active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.custom-select-item.active .custom-select-check { color: #fff; }
+.tag-selectable.selected:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+button.nav-item.active:hover,
+button.sort-item.active:hover,
+button.filter-chip.active:hover,
+button.custom-select-item.active:hover,
+button.tag-selectable.selected:hover,
+button.custom-datepicker-day.selected:hover,
+button.custom-datepicker-year.selected:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+button.titlebar-btn-close:hover {
+  background: #e81123;
+  color: #fff;
+  border-color: #e81123;
+}
 .modal-overlay { background: rgba(0, 0, 0, 0.48); }
 .modal-content { background: var(--bg-elevated); border-color: var(--border); border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32); }
 .modal-title { font-family: var(--font-ui); font-size: 20px; line-height: 28px; font-weight: 600; }
@@ -3341,7 +3394,26 @@ body { background: var(--bg-deep); font-size: 14px; line-height: 20px; }
 .review-textarea { padding: 8px 11px; }
 .form-input:focus,
 .review-textarea:focus,
-.form-tag-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+.form-tag-input:focus { border-color: var(--accent); box-shadow: none; }
+.form-layout .custom-select-trigger,
+.form-layout .custom-datepicker-trigger {
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  font-size: 14px;
+  line-height: 20px;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.form-layout .custom-select-trigger:focus,
+.form-layout .custom-datepicker-trigger:focus,
+.form-layout .custom-select-trigger:focus-visible,
+.form-layout .custom-datepicker-trigger:focus-visible {
+  border-color: var(--accent);
+  border-bottom-color: var(--accent);
+  box-shadow: none;
+}
 .form-poster-zone { border-radius: 8px; box-shadow: none; background: var(--bg-card); }
 
 .timeline-item { border-radius: 4px; transition: background var(--transition); }

@@ -135,13 +135,15 @@ export async function loginCloud(email: string, password: string): Promise<Cloud
   return user;
 }
 
-export async function registerCloud(email: string, password: string, displayName: string): Promise<void> {
+export async function requestRegisterCode(email: string): Promise<void> {
+  await pocketbase.send('/api/pianke/auth/send-register-code', { method: 'POST', body: { email: email.trim() } });
+}
+
+export async function registerCloud(email: string, password: string, displayName: string, code: string): Promise<void> {
   const normalizedEmail = email.trim();
-  await pocketbase.collection('users').create({
-    email: normalizedEmail,
-    password,
-    passwordConfirm: password,
-    displayName: displayName.trim(),
+  await pocketbase.send('/api/pianke/auth/register', {
+    method: 'POST',
+    body: { email: normalizedEmail, password, displayName: displayName.trim(), code: code.trim() },
   });
   await loginCloud(normalizedEmail, password);
 }
@@ -178,13 +180,16 @@ export async function updateCloudProfile(data: { displayName: string; avatar?: F
   return updatedUser;
 }
 
-export async function changeCloudPassword(currentPassword: string, password: string): Promise<void> {
+export async function requestPasswordChangeCode(): Promise<void> {
+  await pocketbase.send('/api/pianke/auth/send-password-code', { method: 'POST' });
+}
+
+export async function changeCloudPassword(currentPassword: string, password: string, code: string): Promise<void> {
   const user = getCloudUser();
   if (!user) throw new Error('登录已失效，请重新登录');
-  await pocketbase.collection('users').update(user.id, {
-    oldPassword: currentPassword,
-    password,
-    passwordConfirm: password,
+  await pocketbase.send('/api/pianke/auth/change-password', {
+    method: 'POST',
+    body: { currentPassword, password, code: code.trim() },
   });
 }
 

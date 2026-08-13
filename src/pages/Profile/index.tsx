@@ -2,7 +2,7 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import Modal from '@/components/common/Modal';
 import { showToast } from '@/components/common/Toast';
 import defaultAvatar from '@/assets/brand/default-avatar.png';
-import { changeCloudPassword, getCloudUser, logoutCloud, updateCloudProfile } from '@/lib/pocketbase';
+import { changeCloudPassword, getCloudUser, logoutCloud, requestPasswordChangeCode, updateCloudProfile } from '@/lib/pocketbase';
 import AppIcon from '@/components/common/AppIcon';
 
 function messageOf(error: unknown, fallback: string): string {
@@ -30,7 +30,10 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordCode, setPasswordCode] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+  const [sendingPasswordCode, setSendingPasswordCode] = useState(false);
+  const [passwordCodeCooldown, setPasswordCodeCooldown] = useState(0);
 
   useEffect(() => () => {
     if (avatarPreview.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
@@ -42,6 +45,12 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
     setAvatarPreview(user.avatarUrl || '');
     setAvatarFile(undefined);
   }, [open, user?.avatarUrl, user?.displayName]);
+
+  useEffect(() => {
+    if (passwordCodeCooldown <= 0) return;
+    const timer = window.setTimeout(() => setPasswordCodeCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [passwordCodeCooldown]);
 
   if (!user) return null;
 
@@ -92,16 +101,31 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
     }
     setSavingPassword(true);
     try {
-      await changeCloudPassword(currentPassword, newPassword);
+      await changeCloudPassword(currentPassword, newPassword, passwordCode);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setPasswordCode('');
       setPasswordOpen(false);
       showToast('密码已修改');
     } catch (error) {
       showToast(messageOf(error, '密码修改失败，请检查当前密码'));
     } finally {
       setSavingPassword(false);
+    }
+  }
+
+  async function sendPasswordCode() {
+    if (sendingPasswordCode || passwordCodeCooldown > 0) return;
+    setSendingPasswordCode(true);
+    try {
+      await requestPasswordChangeCode();
+      setPasswordCodeCooldown(30);
+      showToast('验证码已发送，请查收邮箱');
+    } catch (error) {
+      showToast(messageOf(error, '验证码发送失败，请稍后重试'));
+    } finally {
+      setSendingPasswordCode(false);
     }
   }
 
@@ -167,6 +191,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
           <label className="profile-field"><span>当前密码</span><input className="form-input" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></label>
           <label className="profile-field"><span>新密码</span><input className="form-input" type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={8} required /></label>
           <label className="profile-field"><span>确认新密码</span><input className="form-input" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required /></label>
+          <label className="profile-field"><span>邮箱验证码</span><div className="flex gap-2"><input className="form-input min-w-0 flex-1" value={passwordCode} onChange={(event) => setPasswordCode(event.target.value)} autoComplete="one-time-code" required /><button className="btn btn-secondary whitespace-nowrap" type="button" onClick={sendPasswordCode} disabled={sendingPasswordCode || passwordCodeCooldown > 0}>{sendingPasswordCode ? '发送中…' : passwordCodeCooldown > 0 ? `${passwordCodeCooldown} 秒后重发` : '获取验证码'}</button></div></label>
           <div className="profile-modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setPasswordOpen(false)} disabled={savingPassword}>取消</button><button className="btn btn-primary" type="submit" disabled={savingPassword}>{savingPassword ? '修改中…' : '确认修改'}</button></div>
         </form>
       </Modal>
