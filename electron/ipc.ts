@@ -1,4 +1,3 @@
-import { registerLibraryHandlers } from './modules/library/handler.js';
 import { registerMovieHandlers } from './modules/movie/handler.js';
 import { registerDiaryHandlers } from './modules/diary/handler.js';
 import { registerWatchRecordHandlers } from './modules/watchRecord/handler.js';
@@ -8,7 +7,6 @@ import { registerUpdateHandlers } from './modules/updater/handler.js';
 import { registerTmdbHandlers } from './modules/tmdb/handler.js';
 
 export function registerAllHandlers(): void {
-  registerLibraryHandlers();
   registerMovieHandlers();
   registerDiaryHandlers();
   registerWatchRecordHandlers();

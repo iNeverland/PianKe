@@ -258,18 +258,6 @@ export interface AppUpdateState {
 
 // IPC 通道名称
 export const IPC_CHANNELS = {
-  // 库管理
-  LIBRARY_OPEN: 'library:open',
-  LIBRARY_CREATE: 'library:create',
-  LIBRARY_REOPEN: 'library:reopen',
-  LIBRARY_GET_PATH: 'library:getPath',
-  LIBRARY_GET_INFO: 'library:getInfo',
-  LIBRARY_GET_RECENT_PATH: 'library:getRecentPath',
-  LIBRARY_GET_SUMMARY: 'library:getSummary',
-  LIBRARY_GET_RECENT_WATCHES: 'library:getRecentWatches',
-  LIBRARY_CREATE_BACKUP: 'library:createBackup',
-  LIBRARY_IS_LOADED: 'library:isLoaded',
-
   // 影视管理
   MOVIE_LIST: 'movie:list',
   MOVIE_GET_BY_ID: 'movie:getById',

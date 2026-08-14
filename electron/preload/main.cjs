@@ -3,16 +3,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 // ⚠️ 此块由 generate-preload-channels 插件从 shared/types/index.ts 自动同步
 // 请勿手动修改，如需新增通道请修改 shared/types/index.ts
 const IPC_CHANNELS = {
-  LIBRARY_OPEN: "library:open",
-  LIBRARY_CREATE: "library:create",
-  LIBRARY_REOPEN: "library:reopen",
-  LIBRARY_GET_PATH: "library:getPath",
-  LIBRARY_GET_INFO: "library:getInfo",
-  LIBRARY_GET_RECENT_PATH: "library:getRecentPath",
-  LIBRARY_GET_SUMMARY: "library:getSummary",
-  LIBRARY_GET_RECENT_WATCHES: "library:getRecentWatches",
-  LIBRARY_CREATE_BACKUP: "library:createBackup",
-  LIBRARY_IS_LOADED: "library:isLoaded",
   MOVIE_LIST: "movie:list",
   MOVIE_GET_BY_ID: "movie:getById",
   MOVIE_CREATE: "movie:create",
@@ -119,17 +109,6 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('screenshot:cropped', handler);
   },
 
-  library: {
-    open: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_OPEN),
-    reopen: (dirPath) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REOPEN, dirPath),
-    create: (name) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CREATE, name),
-    getPath: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_PATH),
-    getInfo: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_INFO),
-    getSummary: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_SUMMARY),
-    getRecentWatches: (days) => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_RECENT_WATCHES, days),
-    createBackup: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CREATE_BACKUP),
-  },
-
   movie: {
     list: (filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST, filters),
     getById: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_BY_ID, id),
@@ -188,10 +167,6 @@ const electronAPI = {
     monthlyTrend: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTHLY_TREND),
     monthSummary: (year, month) => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTH_SUMMARY, year, month),
     diaryCalendar: (days) => ipcRenderer.invoke(IPC_CHANNELS.STATS_DIARY_CALENDAR, days),
-  },
-
-  onOpenLibraryPath: (callback) => {
-    ipcRenderer.on('open-library-path', (_event, dirPath) => callback(dirPath));
   },
 };
 

@@ -1,5 +1,5 @@
 import type {
-  LibraryInfo, MovieSummary, MovieMetadata, DiaryEntry, WatchRecord,
+  MovieSummary, MovieMetadata, DiaryEntry, WatchRecord,
   StatsOverview, StatsDashboard, StatsByType, StatsByYear, StatsByGenre,
   StatsByRating, StatsByCountry, StatsMonthlyTrend, MonthSummary,
   DiaryTimelineMonth, DiaryCalendarEntry, ScreenshotInfo, ScreenshotMoviePickerItem,
@@ -9,7 +9,6 @@ import type {
 export interface ElectronAPI {
   platform: string;
   setTheme: (mode: 'dark' | 'light' | 'system') => Promise<void>;
-  onOpenLibraryPath: (callback: (dirPath: string) => void) => void;
   window: {
     minimize: () => Promise<void>;
     maximize: () => Promise<void>;
@@ -33,15 +32,8 @@ export interface ElectronAPI {
   onScreenshotSaved: (callback: (screenshots: ScreenshotInfo[]) => void) => () => void;
   onScreenshotCropped: (callback: (movieId: string, dataUrl: string) => void) => () => void;
   library: {
-    open: () => Promise<LibraryInfo | null>;
-    reopen: (dirPath: string) => Promise<LibraryInfo | null>;
-    create: (name: string) => Promise<LibraryInfo | null>;
-    getPath: () => Promise<string | null>;
-    getInfo: () => Promise<LibraryInfo | null>;
     getSummary: () => Promise<MovieSummary[]>;
     getRecentWatches: (days?: number) => Promise<MovieSummary[]>;
-    createBackup: () => Promise<{ backupPath: string; movieCount: number } | null>;
-    isLoaded: () => Promise<boolean>;
   };
   movie: {
     list: (filters?: Record<string, unknown>) => Promise<MovieSummary[]>;

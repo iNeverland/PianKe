@@ -104,14 +104,6 @@ export default function App() {
     }
   }, []);
 
-  // 云端模式不再自动打开本地 .pianke 库，保留事件监听以避免旧安装包触发异常。
-  useEffect(() => {
-    const api = window.electronAPI;
-    if (api?.onOpenLibraryPath) {
-      api.onOpenLibraryPath(() => {});
-    }
-  }, []);
-
   // 注册截图全局快捷键到主进程
   useEffect(() => {
     if (!libraryLoaded) return;
