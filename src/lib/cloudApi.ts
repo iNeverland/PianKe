@@ -202,6 +202,7 @@ pocketbase.authStore.onChange((_token, record) => {
 function indexSnapshot(snapshot: Snapshot): void {
   // 收到一份完整快照时移除已在其他设备删除的记录，防止旧索引在断网读取时复活。
   movieRecordCache.clear();
+  movieDetailCache.clear();
   screenshotRecordCache.clear();
   screenshotListCache.clear();
   snapshot.movies.forEach((record) => movieRecordCache.set(record.id, record));
@@ -824,7 +825,7 @@ function splitCountries(country: string): string[] {
 
 function ratingBucket(rating: number): number | null {
   if (rating <= 0) return null;
-  return Math.max(2, Math.min(10, Math.round(rating <= 5 ? rating * 2 : rating / 2) * 2));
+  return Math.max(2, Math.min(10, Math.round(rating / 2) * 2));
 }
 
 function sortByMomentDesc<T extends { watchDate: string; watchTime?: string }>(entries: T[]): T[] {
@@ -870,7 +871,7 @@ async function buildDashboard(): Promise<StatsDashboard> {
   }
   const round = (value: number) => Math.round(value * 10) / 10;
   return {
-    overview: { totalMovies: movies.length, totalHours: round(totalMinutes / 60), avgPersonalRating: personalCount ? round(personalTotal / personalCount) : 0, mostWatchedGenre: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([genre]) => genre) },
+    overview: { totalMovies: movies.length, totalHours: round(totalMinutes / 60), avgPersonalRating: personalCount ? round(personalTotal / personalCount) : null, mostWatchedGenre: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([genre]) => genre) },
     byType: (['电影', '剧集', '综艺', '纪录片', '动画'] as const).map((type) => ({ type, count: typeCount[type] || 0 })),
     byGenre: Object.entries(genreCount).map(([genre, count]) => ({ genre, count })).sort((a, b) => b.count - a.count),
     byCountry: Object.entries(countryCount).map(([country, count]) => ({ country, count })).sort((a, b) => b.count - a.count),
@@ -932,7 +933,7 @@ export const cloudApi = {
       return toMetadata(created);
     },
     update: async (id: string, data: Record<string, unknown>): Promise<MovieMetadata> => {
-      const before = await pocketbase.collection('movies').getOne<CloudMovieRecord>(id);
+      const before = await getMovieDetailRecord(id);
       const previous = toMetadata(before);
       const payload = publicFields(data);
       const poster = posterFile(data);

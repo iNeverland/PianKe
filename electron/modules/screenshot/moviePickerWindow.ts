@@ -88,6 +88,11 @@ export function closeMoviePickerWindow(): void {
   moviePickerWindow?.close();
 }
 
+/** 返回选片窗口的 webContents，用于校验 screenshot:movie-picker-* 通道的调用来源。 */
+export function getMoviePickerWebContents() {
+  return moviePickerWindow && !moviePickerWindow.isDestroyed() ? moviePickerWindow.webContents : null;
+}
+
 export function showMoviePickerWindow(baseDir: string, movies: ScreenshotMoviePickerItem[]): void {
   closeMoviePickerWindow();
 
@@ -119,7 +124,7 @@ export function showMoviePickerWindow(baseDir: string, movies: ScreenshotMoviePi
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(baseDir, 'movie-picker-preload.cjs'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },

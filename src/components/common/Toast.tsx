@@ -8,16 +8,27 @@ interface ToastItem {
 
 let toastId = 0;
 const listeners: Set<(toast: ToastItem | null, exiting?: boolean) => void> = new Set();
+let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+let removeTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 计时器与当前 toast id 绑定：新 toast 出现时清掉旧计时器，
+// 避免先弹出的 toast 到点后把后弹出的 toast 提前关掉。
+function scheduleDismiss(id: number, duration: number): void {
+  if (dismissTimer) clearTimeout(dismissTimer);
+  if (removeTimer) clearTimeout(removeTimer);
+  dismissTimer = setTimeout(() => {
+    if (id !== toastId) return;
+    listeners.forEach((fn) => fn(null, true));
+    removeTimer = setTimeout(() => {
+      if (id === toastId) listeners.forEach((fn) => fn(null, false));
+    }, 200);
+  }, duration);
+}
 
 export function showToast(message: string, duration = 2500) {
   const id = ++toastId;
   listeners.forEach((fn) => fn({ id, message }, false));
-  setTimeout(() => {
-    listeners.forEach((fn) => fn(null, true));
-    setTimeout(() => {
-      listeners.forEach((fn) => fn(null, false));
-    }, 200);
-  }, duration);
+  scheduleDismiss(id, duration);
 }
 
 export function showToastWithAction(
@@ -28,12 +39,7 @@ export function showToastWithAction(
 ) {
   const id = ++toastId;
   listeners.forEach((fn) => fn({ id, message, action: { label: actionLabel, onClick: onAction } }, false));
-  setTimeout(() => {
-    listeners.forEach((fn) => fn(null, true));
-    setTimeout(() => {
-      listeners.forEach((fn) => fn(null, false));
-    }, 200);
-  }, duration);
+  scheduleDismiss(id, duration);
 }
 
 export default function Toast() {
@@ -64,6 +70,8 @@ export default function Toast() {
             className="toast-action-btn"
             onClick={() => {
               toast.action!.onClick();
+              if (dismissTimer) clearTimeout(dismissTimer);
+              if (removeTimer) clearTimeout(removeTimer);
               setToast(null);
               setExiting(false);
             }}

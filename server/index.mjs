@@ -30,6 +30,10 @@ const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
 const requestsByIp = new Map();
 const RATE_WINDOW = 60 * 1000;
 const RATE_LIMIT = 60;
+// 仅在部署在可信反向代理（如 Nginx/Vercel）之后时才信任 X-Forwarded-For，
+// 否则直连时攻击者可通过伪造该头绕过限流。
+const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 function cacheGet(key) {
   const hit = cache.get(key);
@@ -46,7 +50,8 @@ function cacheSet(key, body) {
 }
 
 function isRateLimited(req) {
-  const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown').toString().split(',')[0].trim();
+  const forwarded = TRUST_PROXY ? req.headers['x-forwarded-for'] : undefined;
+  const ip = (forwarded || req.socket.remoteAddress || 'unknown').toString().split(',')[0].trim();
   const now = Date.now();
   const current = requestsByIp.get(ip);
   if (!current || now - current.startedAt >= RATE_WINDOW) {
@@ -83,6 +88,7 @@ async function proxyToTmdb(pathname, query) {
       ...(isV3ApiKey ? {} : { Authorization: `Bearer ${TMDB_TOKEN}` }),
       accept: 'application/json',
     },
+    signal: AbortSignal.timeout(8000),
   });
 
   const data = await res.json().catch(() => ({}));
@@ -210,9 +216,12 @@ const server = http.createServer(async (req, res) => {
       if (cached && cached.buffer) {
         return sendImage(res, cached.buffer, cached.type);
       }
-      const imgRes = await fetch(`${TMDB_IMG}/${width}${imgPath}`);
+      const imgRes = await fetch(`${TMDB_IMG}/${width}${imgPath}`, { signal: AbortSignal.timeout(15000) });
       if (!imgRes.ok) return sendJson(res, 502, { error: '海报获取失败' });
+      const contentLength = Number(imgRes.headers.get('content-length') || 0);
+      if (contentLength > MAX_IMAGE_BYTES) return sendJson(res, 413, { error: '海报文件过大' });
       const buffer = Buffer.from(await imgRes.arrayBuffer());
+      if (buffer.length > MAX_IMAGE_BYTES) return sendJson(res, 413, { error: '海报文件过大' });
       const type = imgRes.headers.get('content-type') || 'image/jpeg';
       cacheSet(cacheKey, { buffer, type });
       return sendImage(res, buffer, type);

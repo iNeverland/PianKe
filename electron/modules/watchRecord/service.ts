@@ -15,12 +15,20 @@ function getMovieDirectory(movieId: string): string {
   return getMovieDir(getMovieFolderName(movie.title, movie.releaseDate));
 }
 
-async function persist(movieId: string, entries: WatchRecord[]): Promise<void> {
+/**
+ * 在写队列内完成「读取 → 修改 → 原子落盘 → 提交内存」，同一影视的追剧记录
+ * 操作被按文件串行化，避免并发读-改-写互相覆盖导致丢失更新。
+ */
+async function mutateRecords(
+  movieId: string,
+  mutate: (entries: WatchRecord[]) => WatchRecord[]
+): Promise<void> {
   const recordsPath = getWatchRecordsPath(getMovieDirectory(movieId));
   await writeQueue.enqueue(recordsPath, async () => {
+    const entries = mutate([...dataStore.getWatchRecords(movieId)]);
     writeJsonAtomicSync(recordsPath, entries);
+    dataStore.setWatchRecords(movieId, entries);
   });
-  dataStore.setWatchRecords(movieId, entries);
 }
 
 export function getWatchRecordsByMovie(movieId: string): WatchRecord[] {
@@ -28,7 +36,6 @@ export function getWatchRecordsByMovie(movieId: string): WatchRecord[] {
 }
 
 export async function addWatchRecord(movieId: string, data: Record<string, unknown>): Promise<WatchRecord> {
-  getMovieDirectory(movieId);
   const validated = CreateWatchRecordInputSchema.parse(data);
   const entry: WatchRecord = {
     id: uuidv4(),
@@ -37,8 +44,7 @@ export async function addWatchRecord(movieId: string, data: Record<string, unkno
     rating: validated.rating,
     review: validated.review,
   };
-  const entries = [...dataStore.getWatchRecords(movieId), entry];
-  await persist(movieId, entries);
+  await mutateRecords(movieId, (entries) => [...entries, entry]);
   return entry;
 }
 
@@ -47,19 +53,19 @@ export async function updateWatchRecord(
   entryId: string,
   data: Partial<WatchRecord>,
 ): Promise<WatchRecord> {
-  const entries = [...dataStore.getWatchRecords(movieId)];
-  const index = entries.findIndex((entry) => entry.id === entryId);
-  if (index === -1) throw new AppError(ErrorCode.DIARY_NOT_FOUND, '追剧记录不存在');
-
   const validated = CreateWatchRecordInputSchema.partial().parse(data);
-  const updated: WatchRecord = { ...entries[index], ...validated, id: entryId };
-  entries[index] = updated;
-  await persist(movieId, entries);
-  return updated;
+  let updated: WatchRecord | undefined;
+  await mutateRecords(movieId, (entries) => {
+    const index = entries.findIndex((entry) => entry.id === entryId);
+    if (index === -1) throw new AppError(ErrorCode.DIARY_NOT_FOUND, '追剧记录不存在');
+    updated = { ...entries[index], ...validated, id: entryId };
+    const next = [...entries];
+    next[index] = updated;
+    return next;
+  });
+  return updated!;
 }
 
 export async function deleteWatchRecord(movieId: string, entryId: string): Promise<void> {
-  getMovieDirectory(movieId);
-  const entries = dataStore.getWatchRecords(movieId).filter((entry) => entry.id !== entryId);
-  await persist(movieId, entries);
+  await mutateRecords(movieId, (entries) => entries.filter((entry) => entry.id !== entryId));
 }

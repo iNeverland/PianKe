@@ -98,7 +98,8 @@ export interface LibraryInfo {
 export interface StatsOverview {
   totalMovies: number;
   totalHours: number;
-  avgPersonalRating: number;
+  /** 平均个人评分：无任何评分时返回 null，UI 显示为「—」而非「0/10」。 */
+  avgPersonalRating: number | null;
   mostWatchedGenre: string[];
 }
 
@@ -214,7 +215,8 @@ export interface MonthSummary {
   month: number;
   totalMovies: number;
   totalHours: number;
-  avgRating: number;
+  /** 该月平均个人评分：无评分时为 null。 */
+  avgRating: number | null;
   topGenres: string[];
   movies: MovieSummary[];
   diaryEntries: DiaryEntry[];

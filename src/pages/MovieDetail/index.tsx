@@ -157,15 +157,6 @@ export default function MovieDetail() {
     return () => window.removeEventListener('screenshot:capture', handleCapture);
   }, [id]);
 
-  // 监听主进程裁剪保存完成
-  useEffect(() => {
-    const unsub = window.electronAPI?.onScreenshotSaved?.((updated) => {
-      setScreenshots(updated);
-      window.electronAPI?.showScreenToast?.('截图已保存，已复制到剪贴板');
-    });
-    return () => { unsub?.(); };
-  }, []);
-
   // 裁剪窗口不接触云端凭据；由当前已登录的渲染进程将图片上传到 PocketBase。
   useEffect(() => {
     const unsub = window.electronAPI?.onScreenshotCropped?.((movieId, dataUrl) => {
@@ -255,7 +246,7 @@ export default function MovieDetail() {
     if (!id) return;
     try {
       const entry = await api.watchRecord.add(id, { ...diaryForm, watchTime: diaryForm.watchTime || getLocalTimeStr() });
-      setEntries((prev) => [...prev, entry]);
+      setEntries((prev) => [entry, ...prev]);
       setShowAddDiary(false);
       setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
       showToast('追剧记录已添加');
@@ -322,17 +313,21 @@ export default function MovieDetail() {
 
   async function handleUpdateProgress() {
     if (!id) return;
-    if (movie?.progress?.totalEpisodes && progressForm.episode >= movie.progress.totalEpisodes) {
-      setShowProgress(false);
-      setShowFinishWatching(true);
-      return;
-    }
+    const totalEpisodes = movie?.progress?.totalEpisodes;
+    const reachingLast = Boolean(totalEpisodes && progressForm.episode >= totalEpisodes);
+    const targetEpisode = reachingLast ? totalEpisodes! : progressForm.episode;
     try {
-      const updated = await api.movie.updateProgress(id, progressForm.episode);
+      // 先持久化进度，再弹出「看完了？」弹窗；取消弹窗不会丢失已到达最后一集的进度。
+      const updated = await api.movie.updateProgress(id, targetEpisode);
       setMovie(updated);
+      setProgressForm({ episode: updated.progress?.episode ?? targetEpisode });
       setShowProgress(false);
       void refreshDiary();
-      showToast('进度已更新');
+      if (reachingLast) {
+        setShowFinishWatching(true);
+      } else {
+        showToast('进度已更新');
+      }
     } catch (err: any) {
       showToast(err.message || '更新失败');
     }
@@ -342,10 +337,7 @@ export default function MovieDetail() {
     if (!id || !movie?.progress?.totalEpisodes || updatingProgress) return;
     const p = movie.progress;
     const nextEp = Math.min(p.episode + 1, p.totalEpisodes);
-    if (nextEp >= p.totalEpisodes) {
-      setShowFinishWatching(true);
-      return;
-    }
+    const reachingLast = nextEp >= p.totalEpisodes;
 
     const previousMovie = movie;
     setMovie({ ...movie, progress: { ...p, episode: nextEp } });
@@ -355,7 +347,12 @@ export default function MovieDetail() {
       const updated = await api.movie.updateProgress(id, nextEp);
       setMovie(updated);
       void refreshDiary();
-      showToast(`进度 第${nextEp}集`);
+      if (reachingLast) {
+        // 进度已更新到最后一集，弹窗仅用于补录评分/短评；取消不会丢进度。
+        setShowFinishWatching(true);
+      } else {
+        showToast(`进度 第${nextEp}集`);
+      }
     } catch (err: any) {
       setMovie(previousMovie);
       setProgressForm({ episode: p.episode });

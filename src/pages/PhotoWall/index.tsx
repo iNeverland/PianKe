@@ -281,11 +281,12 @@ export default function PhotoWall() {
   }, [previewMode]);
 
   useEffect(() => {
+    if (loading) return;
     const updateWidth = () => setWallWidth(document.querySelector<HTMLElement>('.photo-wall-list')?.clientWidth || 0);
     updateWidth();
     window.addEventListener('resize', updateWidth);
     return () => window.removeEventListener('resize', updateWidth);
-  }, []);
+  }, [loading, movies.length]);
 
   const screenshotCount = useMemo(() => movies.reduce((total, movie) => total + movie.screenshotCount, 0), [movies]);
   const sortedMovies = useMemo(() => [...movies].sort(compareMoviesByPinyin), [movies]);

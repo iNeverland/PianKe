@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import appLogo from '@/assets/brand/PianKe.svg';
 import defaultAvatar from '@/assets/brand/default-avatar.png';
 import { getCloudUser, refreshCloudUser } from '@/lib/pocketbase';
 import ProfileDialog from '@/pages/Profile';
@@ -35,7 +34,10 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-capsule">
-        <img src={appLogo} alt="PianKe" className="sidebar-logo" />
+        <button onClick={openProfile} className={`nav-item sidebar-avatar-entry${profileOpen ? ' active' : ''}`} aria-label="个人中心">
+          <img src={user?.avatarUrl || defaultAvatar} alt="" />
+          <span className="nav-tooltip">个人中心</span>
+        </button>
         <div className="sidebar-divider" />
         {navItems.map((item) => {
           const isActive = item.path === '/' ? location.pathname === '/' || location.pathname.startsWith('/movie/') : location.pathname === item.path;
@@ -52,10 +54,6 @@ export default function Sidebar() {
           <span className="nav-tooltip">设置</span>
         </button>
       </div>
-      <button onClick={openProfile} className={`sidebar-profile-entry${profileOpen ? ' active' : ''}`} aria-label="个人中心">
-        <img src={user?.avatarUrl || defaultAvatar} alt="" />
-        <span className="nav-tooltip">个人中心</span>
-      </button>
       <ProfileDialog open={profileOpen} onClose={() => setProfileOpen(false)} onProfileChange={() => setUser(getCloudUser())} />
     </aside>
   );

@@ -27,6 +27,11 @@ export function closeCropWindow(): void {
   cropWindow?.close();
 }
 
+/** 返回裁剪窗口的 webContents，用于校验 crop:* 通道的调用来源。 */
+export function getCropWindowWebContents() {
+  return cropWindow && !cropWindow.isDestroyed() ? cropWindow.webContents : null;
+}
+
 export function startCropWindow(
   baseDir: string,
   movieId: string | null,
@@ -60,7 +65,7 @@ export function startCropWindow(
     backgroundColor: '#000',
     webPreferences: {
       preload: path.join(baseDir, 'crop-preload.cjs'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },

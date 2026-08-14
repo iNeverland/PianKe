@@ -10,8 +10,18 @@ import { createPosterThumbnail, needsPosterThumbnailRegen } from '../../utils/th
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import { CreateMovieInputSchema, UpdateMovieInputSchema } from '../../../shared/schemas/index.js';
-import type { MovieMetadata, MovieSummary, MediaType, WatchStatus, Progress, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
+import type { MovieMetadata, MovieSummary, MediaType, WatchStatus, SearchFilters, ScreenshotInfo } from '../../../shared/types/index.js';
 import { getLocalDateStr, getLocalTimeStr } from '../../../shared/utils/date.js';
+
+/** 校验并规范化图片扩展名，只允许 jpg/jpeg/png/webp，防止路径穿越。 */
+function normalizeImageExt(ext: string, fallback = '.jpg'): string {
+  const raw = (ext || fallback).toLowerCase();
+  const withDot = raw.startsWith('.') ? raw : `.${raw}`;
+  if (!/^\.(jpe?g|png|webp)$/.test(withDot)) {
+    throw new AppError(ErrorCode.SCHEMA_VALIDATION_FAILED, '图片格式不支持');
+  }
+  return withDot;
+}
 
 /** 从手动追剧记录中计算平均个人评分，无评分返回 null */
 function getPersonalRating(movieId: string): number | null {
@@ -98,7 +108,7 @@ async function savePosterFromBase64(
 ): Promise<{ posterPath: string; posterThumbPath: string }> {
   const base64Data = base64DataUrl.includes(',') ? base64DataUrl.split(',')[1] : base64DataUrl;
   const buffer = Buffer.from(base64Data, 'base64');
-  const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`;
+  const normalizedExt = normalizeImageExt(ext);
   const posterFilename = `poster${normalizedExt}`;
   const thumbFilename = `poster_thumb${normalizedExt}`;
 
@@ -116,8 +126,7 @@ async function savePosterFromBase64(
 
 // 创建影视
 export async function createMovie(
-  data: Record<string, unknown>,
-  posterFilePath?: string
+  data: Record<string, unknown>
 ): Promise<MovieMetadata> {
   const validated = CreateMovieInputSchema.parse(data);
 
@@ -141,25 +150,12 @@ export async function createMovie(
   let posterPath: string | undefined;
   let posterThumbPath: string | undefined;
 
-  // 处理海报（优先 base64 数据，其次文件路径）
+  // 海报只接受经过扩展名校验的 base64 数据，绝不接受渲染进程传入的任意文件路径，
+  // 避免主进程被利用去读取/复制磁盘上的任意文件。
   if (validated.posterBase64 && validated.posterExt) {
     const result = await savePosterFromBase64(validated.posterBase64, validated.posterExt, movieDir);
     posterPath = result.posterPath;
     posterThumbPath = result.posterThumbPath;
-  } else if (posterFilePath && fs.existsSync(posterFilePath)) {
-    const ext = path.extname(posterFilePath) || '.jpg';
-    const posterFilename = `poster${ext}`;
-    const thumbFilename = `poster_thumb${ext}`;
-
-    fs.copyFileSync(posterFilePath, path.join(movieDir, posterFilename));
-    posterPath = posterFilename;
-    posterThumbPath = thumbFilename;
-
-    try {
-      await createPosterThumbnail(posterFilePath, path.join(movieDir, thumbFilename));
-    } catch {
-      fs.copyFileSync(posterFilePath, path.join(movieDir, thumbFilename));
-    }
   }
 
   const metadata: MovieMetadata = {
@@ -214,8 +210,7 @@ export async function createMovie(
 // 更新影视
 export async function updateMovie(
   id: string,
-  data: Record<string, unknown>,
-  posterFilePath?: string
+  data: Record<string, unknown>
 ): Promise<MovieMetadata> {
   const existing = dataStore.getMovie(id);
   if (!existing) {
@@ -255,27 +250,13 @@ export async function updateMovie(
   // 确保新目录存在
   fs.mkdirSync(newMovieDir, { recursive: true });
 
-  // 处理海报更新（优先 base64 数据，其次文件路径）
+  // 处理海报更新：只接受经过扩展名校验的 base64 数据，不接受任意文件路径。
   const posterBase64 = validated.posterBase64;
   const posterExt = validated.posterExt;
   if (posterBase64 && posterExt) {
     const result = await savePosterFromBase64(posterBase64, posterExt, newMovieDir);
     updated.posterPath = result.posterPath;
     updated.posterThumbPath = result.posterThumbPath;
-  } else if (posterFilePath && fs.existsSync(posterFilePath)) {
-    const ext = path.extname(posterFilePath) || '.jpg';
-    const posterFilename = `poster${ext}`;
-    const thumbFilename = `poster_thumb${ext}`;
-
-    fs.copyFileSync(posterFilePath, path.join(newMovieDir, posterFilename));
-    updated.posterPath = posterFilename;
-    updated.posterThumbPath = thumbFilename;
-
-    try {
-      await createPosterThumbnail(posterFilePath, path.join(newMovieDir, thumbFilename));
-    } catch {
-      fs.copyFileSync(posterFilePath, path.join(newMovieDir, thumbFilename));
-    }
   }
 
   // 状态变为已看完 → 自动将进度设为100%
@@ -316,17 +297,17 @@ export async function updateMovie(
     (updated.status === '在看' || updated.status === '已看完')
   ) {
     const today = getLocalDateStr();
-    const diaryEntries = dataStore.getDiary(id);
     const review = `状态变更为「${updated.status}」`;
-    if (!diaryEntries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
-      const watchTime = getLocalTimeStr();
-      diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' });
-      dataStore.setDiary(id, diaryEntries);
-      const diaryPath = getDiaryPath(newMovieDir);
-      await writeQueue.enqueue(diaryPath, async () => {
+    const diaryPath = getDiaryPath(newMovieDir);
+    await writeQueue.enqueue(diaryPath, async () => {
+      const diaryEntries = [...dataStore.getDiary(id)];
+      if (!diaryEntries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
+        const watchTime = getLocalTimeStr();
+        diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' });
         writeJsonAtomicSync(diaryPath, diaryEntries);
-      });
-    }
+        dataStore.setDiary(id, diaryEntries);
+      }
+    });
   }
 
   // 综艺 segments 变更 → 记录日记（10 分钟内合并）
@@ -340,39 +321,40 @@ export async function updateMovie(
     const watchTime = getLocalTimeStr();
     const filled = updated.progress.segments.filter(s => s.trim());
     const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
-    const diaryEntries = dataStore.getDiary(id);
-
-    const TEN_MINUTES = 10 * 60 * 1000;
-    const lastProgressIdx = (() => {
-      for (let i = diaryEntries.length - 1; i >= 0; i--) {
-        if (diaryEntries[i].kind === 'progress') return i;
-      }
-      return -1;
-    })();
-
-    let replaceExisting = false;
-    if (lastProgressIdx !== -1) {
-      const lastEntry = diaryEntries[lastProgressIdx];
-      const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
-      if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
-        replaceExisting = true;
-      }
-    }
-
-    if (replaceExisting) {
-      diaryEntries[lastProgressIdx] = {
-        ...diaryEntries[lastProgressIdx],
-        watchTime,
-        review,
-      };
-    } else {
-      diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'progress' });
-    }
-
-    dataStore.setDiary(id, diaryEntries);
     const diaryPath = getDiaryPath(newMovieDir);
+
     await writeQueue.enqueue(diaryPath, async () => {
+      const diaryEntries = [...dataStore.getDiary(id)];
+
+      const TEN_MINUTES = 10 * 60 * 1000;
+      const lastProgressIdx = (() => {
+        for (let i = diaryEntries.length - 1; i >= 0; i--) {
+          if (diaryEntries[i].kind === 'progress') return i;
+        }
+        return -1;
+      })();
+
+      let replaceExisting = false;
+      if (lastProgressIdx !== -1) {
+        const lastEntry = diaryEntries[lastProgressIdx];
+        const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
+        if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
+          replaceExisting = true;
+        }
+      }
+
+      if (replaceExisting) {
+        diaryEntries[lastProgressIdx] = {
+          ...diaryEntries[lastProgressIdx],
+          watchTime,
+          review,
+        };
+      } else {
+        diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'progress' });
+      }
+
       writeJsonAtomicSync(diaryPath, diaryEntries);
+      dataStore.setDiary(id, diaryEntries);
     });
   }
 
@@ -566,68 +548,69 @@ export async function updateProgress(
     throw new AppError(ErrorCode.PROGRESS_INVALID, '该影视不支持进度追踪');
   }
 
-  const updatedProgress: Progress = {
-    ...movie.progress,
-    episode: Math.max(0, Math.min(episode, movie.progress.totalEpisodes)),
-  };
-  const currentEpisode = updatedProgress.episode;
-
-  const updated = {
-    ...movie,
-    progress: updatedProgress,
-  };
-
-  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
+  const totalEpisodes = movie.progress.totalEpisodes;
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
   const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
-  await writeQueue.enqueue(metadataPath, async () => {
-    writeJsonAtomicSync(metadataPath, updated);
-  });
+  const diaryPath = getDiaryPath(movieDir);
 
-  dataStore.setMovie(id, updated);
+  let updated: MovieMetadata | undefined;
+  let currentEpisode = 0;
+
+  // 在写队列内读取最新影片、计算进度并原子落盘，避免并发读-改-写覆盖。
+  await writeQueue.enqueue(metadataPath, async () => {
+    const current = dataStore.getMovie(id);
+    if (!current) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+    const progress = current.progress;
+    if (!progress?.totalEpisodes) throw new AppError(ErrorCode.PROGRESS_INVALID, '该影视不支持进度追踪');
+    currentEpisode = Math.max(0, Math.min(episode, progress.totalEpisodes));
+    updated = { ...current, progress: { ...progress, episode: currentEpisode } };
+    writeJsonAtomicSync(metadataPath, updated);
+    dataStore.setMovie(id, updated);
+  });
 
   // 10 分钟内同一影视的进度更新合并为最新一条，避免频繁操作产生冗余记录
   const today = getLocalDateStr();
   const now = new Date();
   const watchTime = getLocalTimeStr();
-  const review = `第${currentEpisode}集 · 进度 ${Math.round((currentEpisode / movie.progress.totalEpisodes) * 100)}%`;
-  const diaryEntries = dataStore.getDiary(id);
+  const review = `第${currentEpisode}集 · 进度 ${Math.round((currentEpisode / totalEpisodes) * 100)}%`;
 
-  // 从末尾查找最近的 progress 记录
-  const lastProgressIdx = (() => {
-    for (let i = diaryEntries.length - 1; i >= 0; i--) {
-      if (diaryEntries[i].kind === 'progress') return i;
-    }
-    return -1;
-  })();
-
-  const TEN_MINUTES = 10 * 60 * 1000;
-  let replaceExisting = false;
-  if (lastProgressIdx !== -1) {
-    const lastEntry = diaryEntries[lastProgressIdx];
-    const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
-    if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
-      replaceExisting = true;
-    }
-  }
-
-  if (replaceExisting) {
-    diaryEntries[lastProgressIdx] = {
-      ...diaryEntries[lastProgressIdx],
-      watchTime,
-      review,
-    };
-  } else {
-    diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'progress' });
-  }
-
-  dataStore.setDiary(id, diaryEntries);
-  const diaryPath = getDiaryPath(movieDir);
   await writeQueue.enqueue(diaryPath, async () => {
+    const diaryEntries = [...dataStore.getDiary(id)];
+
+    // 从末尾查找最近的 progress 记录
+    const lastProgressIdx = (() => {
+      for (let i = diaryEntries.length - 1; i >= 0; i--) {
+        if (diaryEntries[i].kind === 'progress') return i;
+      }
+      return -1;
+    })();
+
+    const TEN_MINUTES = 10 * 60 * 1000;
+    let replaceExisting = false;
+    if (lastProgressIdx !== -1) {
+      const lastEntry = diaryEntries[lastProgressIdx];
+      const entryTime = new Date(`${lastEntry.watchDate}T${lastEntry.watchTime || '00:00:00'}`);
+      if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
+        replaceExisting = true;
+      }
+    }
+
+    if (replaceExisting) {
+      diaryEntries[lastProgressIdx] = {
+        ...diaryEntries[lastProgressIdx],
+        watchTime,
+        review,
+      };
+    } else {
+      diaryEntries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'progress' });
+    }
+
     writeJsonAtomicSync(diaryPath, diaryEntries);
+    dataStore.setDiary(id, diaryEntries);
   });
 
-  return updated;
+  return updated!;
 }
 
 // 添加标签
@@ -636,19 +619,24 @@ export async function addTag(id: string, tag: string): Promise<MovieMetadata> {
   if (!movie) {
     throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
   }
-
   if (movie.tags.includes(tag)) return movie;
 
-  const updated = { ...movie, tags: [...movie.tags, tag] };
-  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
-  const movieDir = getMovieDir(folderName);
-  const metadataPath = getMetadataPath(movieDir);
-  await writeQueue.enqueue(metadataPath, async () => {
-    writeJsonAtomicSync(metadataPath, updated);
-  });
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+  const metadataPath = getMetadataPath(getMovieDir(folderName));
 
-  dataStore.setMovie(id, updated);
-  return updated;
+  let updated: MovieMetadata | undefined;
+  await writeQueue.enqueue(metadataPath, async () => {
+    const current = dataStore.getMovie(id);
+    if (!current) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+    if (current.tags.includes(tag)) {
+      updated = current;
+      return;
+    }
+    updated = { ...current, tags: [...current.tags, tag] };
+    writeJsonAtomicSync(metadataPath, updated);
+    dataStore.setMovie(id, updated);
+  });
+  return updated!;
 }
 
 // 移除标签
@@ -658,16 +646,18 @@ export async function removeTag(id: string, tag: string): Promise<MovieMetadata>
     throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
   }
 
-  const updated = { ...movie, tags: movie.tags.filter((t) => t !== tag) };
-  const folderName = getMovieFolderName(updated.title, updated.releaseDate);
-  const movieDir = getMovieDir(folderName);
-  const metadataPath = getMetadataPath(movieDir);
-  await writeQueue.enqueue(metadataPath, async () => {
-    writeJsonAtomicSync(metadataPath, updated);
-  });
+  const folderName = getMovieFolderName(movie.title, movie.releaseDate);
+  const metadataPath = getMetadataPath(getMovieDir(folderName));
 
-  dataStore.setMovie(id, updated);
-  return updated;
+  let updated: MovieMetadata | undefined;
+  await writeQueue.enqueue(metadataPath, async () => {
+    const current = dataStore.getMovie(id);
+    if (!current) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+    updated = { ...current, tags: current.tags.filter((t) => t !== tag) };
+    writeJsonAtomicSync(metadataPath, updated);
+    dataStore.setMovie(id, updated);
+  });
+  return updated!;
 }
 
 // 获取海报 base64（带内存缓存）
@@ -780,6 +770,20 @@ function getScreenshotsMetaPath(screenshotsDir: string): string {
   return path.join(screenshotsDir, 'screenshots.json');
 }
 
+/** 校验截图文件名：必须是纯文件名（无路径分隔符、无 ..），防止路径穿越读写/删除任意文件。 */
+function assertSafeScreenshotFilename(filename: string): void {
+  if (
+    !filename ||
+    filename !== path.basename(filename) ||
+    filename === 'screenshots.json' ||
+    filename.includes('..') ||
+    filename.includes('/') ||
+    filename.includes('\\')
+  ) {
+    throw new AppError(ErrorCode.SCHEMA_VALIDATION_FAILED, '截图文件名不合法');
+  }
+}
+
 /** 读取截图元数据文件 */
 function readScreenshotsMeta(screenshotsDir: string): ScreenshotMetaMap {
   const metaPath = getScreenshotsMetaPath(screenshotsDir);
@@ -830,20 +834,25 @@ export function listScreenshots(id: string, cachedMeta?: ScreenshotMetaMap): Scr
 }
 
 /** 更新截图的时间戳元数据，返回更新后列表 */
-export function updateScreenshotInfo(
+export async function updateScreenshotInfo(
   id: string,
   filename: string,
   info: ScreenshotMetaEntry
-): ScreenshotInfo[] {
+): Promise<ScreenshotInfo[]> {
+  assertSafeScreenshotFilename(filename);
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
 
-  const meta = readScreenshotsMeta(screenshotsDir);
-  meta[filename] = info;
-  writeScreenshotsMeta(screenshotsDir, meta);
-
-  // 复用已加载的 meta 避免 listScreenshots 重复读盘
-  return listScreenshots(id, meta);
+  let result: ScreenshotInfo[] = [];
+  // 与 addScreenshot 使用同一把锁，串行化 screenshots.json 的读-改-写。
+  await writeQueue.enqueue(screenshotsDir, async () => {
+    const meta = readScreenshotsMeta(screenshotsDir);
+    meta[filename] = info;
+    writeScreenshotsMeta(screenshotsDir, meta);
+    // 复用已加载的 meta 避免 listScreenshots 重复读盘
+    result = listScreenshots(id, meta);
+  });
+  return result;
 }
 
 /** 添加截图（base64 → 文件 + 缩略图），返回更新后列表 */
@@ -860,7 +869,7 @@ export async function addScreenshot(id: string, base64Data: string, ext: string)
       if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
     }
     const nextNum = maxNum + 1;
-    const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`;
+    const normalizedExt = normalizeImageExt(ext);
     const filename = `shot_${String(nextNum).padStart(3, '0')}${normalizedExt}`;
     const baseName = `shot_${String(nextNum).padStart(3, '0')}`;
     const thumbFilename = `${baseName}_thumb${normalizedExt}`;
@@ -883,31 +892,37 @@ export async function addScreenshot(id: string, base64Data: string, ext: string)
 }
 
 /** 删除截图（含缩略图 + 元数据），返回更新后列表 */
-export function deleteScreenshot(id: string, filename: string): ScreenshotInfo[] {
+export async function deleteScreenshot(id: string, filename: string): Promise<ScreenshotInfo[]> {
+  assertSafeScreenshotFilename(filename);
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
 
-  const filePath = path.join(screenshotsDir, filename);
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  let result: ScreenshotInfo[] = [];
+  await writeQueue.enqueue(screenshotsDir, async () => {
+    const filePath = path.join(screenshotsDir, filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
-  // 删除对应缩略图
-  const ext = path.extname(filename);
-  const baseName = path.basename(filename, ext);
-  const thumbPath = path.join(screenshotsDir, `${baseName}_thumb${ext}`);
-  if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
+    // 删除对应缩略图
+    const ext = path.extname(filename);
+    const baseName = path.basename(filename, ext);
+    const thumbPath = path.join(screenshotsDir, `${baseName}_thumb${ext}`);
+    if (fs.existsSync(thumbPath)) fs.unlinkSync(thumbPath);
 
-  // 清理元数据
-  const meta = readScreenshotsMeta(screenshotsDir);
-  if (meta[filename]) {
-    delete meta[filename];
-    writeScreenshotsMeta(screenshotsDir, meta);
-  }
+    // 清理元数据
+    const meta = readScreenshotsMeta(screenshotsDir);
+    if (meta[filename]) {
+      delete meta[filename];
+      writeScreenshotsMeta(screenshotsDir, meta);
+    }
 
-  return listScreenshots(id);
+    result = listScreenshots(id);
+  });
+  return result;
 }
 
 /** 获取原图 base64（灯箱查看） */
 export function getScreenshotBase64(id: string, filename: string): string | null {
+  assertSafeScreenshotFilename(filename);
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
   const filePath = path.join(screenshotsDir, filename);
@@ -922,6 +937,7 @@ export function getScreenshotBase64(id: string, filename: string): string | null
 
 /** 获取单张截图缩略图。供可见区域按需加载，避免列表一次传输全部 base64。 */
 export function getScreenshotThumbnailBase64(id: string, filename: string): string | null {
+  assertSafeScreenshotFilename(filename);
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
   const ext = path.extname(filename).toLowerCase();

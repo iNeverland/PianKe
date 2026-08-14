@@ -120,7 +120,7 @@ export const CreateMovieInputSchema = z.object({
   rewatchCount: z.number().int().nonnegative().optional(),
   // 海报 base64 数据（data URL 格式）
   posterBase64: z.string().optional(),
-  posterExt: z.string().optional(),
+  posterExt: z.string().regex(/^\.?(jpe?g|png|webp)$/i).optional(),
 });
 
 // 用于创建手动追剧记录的输入校验
@@ -149,6 +149,6 @@ export const UpdateMovieInputSchema = z.object({
   progress: ProgressSchema.nullable().optional(),
   rewatchCount: z.number().int().nonnegative().optional(),
   posterBase64: z.string().optional(),
-  posterExt: z.string().optional(),
+  posterExt: z.string().regex(/^\.?(jpe?g|png|webp)$/i).optional(),
   removePoster: z.boolean().optional(),
 });

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
 import { getMovieDir, getMovieFolderName, getDiaryPath, getWatchRecordsPath, getMetadataPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
+import { writeJsonAtomicSync } from '../../utils/atomicWrite.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import type { MovieSummary, DiaryEntry, WatchRecord } from '../../../shared/types/index.js';
@@ -15,6 +16,14 @@ function getPersonalRating(movieId: string): number | null {
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
   return Math.round(rated.reduce((sum, e) => sum + e.rating, 0) / rated.length * 10) / 10;
+}
+
+function ensureMovieDir(movieId: string): string {
+  const movie = dataStore.getMovie(movieId);
+  if (!movie) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+  const movieDir = getMovieDir(getMovieFolderName(movie.title, movie.releaseDate));
+  if (!fs.existsSync(movieDir)) fs.mkdirSync(movieDir, { recursive: true });
+  return movieDir;
 }
 
 // 获取想看清单
@@ -39,40 +48,31 @@ export function getWatchlist(): MovieSummary[] {
 
 // 标记追剧中
 export async function markAsWatching(movieId: string): Promise<void> {
-  const movie = dataStore.getMovie(movieId);
-  if (!movie) {
-    throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  }
-
-  const updatedMovie = { ...movie, status: '在看' as const };
-  const folderName = getMovieFolderName(updatedMovie.title, updatedMovie.releaseDate);
-  const movieDir = getMovieDir(folderName);
-
-  // 确保目录存在
-  if (!fs.existsSync(movieDir)) {
-    fs.mkdirSync(movieDir, { recursive: true });
-  }
-
+  const movieDir = ensureMovieDir(movieId);
   const metadataPath = getMetadataPath(movieDir);
-  await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updatedMovie, null, 2), 'utf-8');
-  });
 
-  dataStore.setMovie(movieId, updatedMovie);
+  // 在写队列内读取最新影片状态、修改并原子落盘，避免并发覆盖。
+  await writeQueue.enqueue(metadataPath, async () => {
+    const current = dataStore.getMovie(movieId);
+    if (!current) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+    const updatedMovie = { ...current, status: '在看' as const };
+    writeJsonAtomicSync(metadataPath, updatedMovie);
+    dataStore.setMovie(movieId, updatedMovie);
+  });
 
   // 状态变更是系统事件，不与用户当天的手动日记互相覆盖。
   const today = getLocalDateStr();
-  const entries = dataStore.getDiary(movieId);
-  const review = '状态变更为「追剧中」';
-  if (!entries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
-    const watchTime = getLocalTimeStr();
-    entries.push({ id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' });
-    dataStore.setDiary(movieId, entries);
-    const diaryPath = getDiaryPath(movieDir);
-    await writeQueue.enqueue(diaryPath, async () => {
-      fs.writeFileSync(diaryPath, JSON.stringify(entries, null, 2), 'utf-8');
-    });
-  }
+  const diaryPath = getDiaryPath(movieDir);
+  await writeQueue.enqueue(diaryPath, async () => {
+    const entries = dataStore.getDiary(movieId);
+    const review = '状态变更为「追剧中」';
+    if (!entries.some(e => e.watchDate === today && e.kind === 'status' && e.review === review)) {
+      const watchTime = getLocalTimeStr();
+      const next: DiaryEntry[] = [...entries, { id: uuidv4(), watchDate: today, watchTime, rating: -1, review, images: [], kind: 'status' }];
+      writeJsonAtomicSync(diaryPath, next);
+      dataStore.setDiary(movieId, next);
+    }
+  });
 }
 
 // 标记已看完（原子操作：更新状态 + 自动日记 + 可选手动追剧记录）
@@ -80,35 +80,27 @@ export async function markAsWatched(
   movieId: string,
   entryData: { watchDate: string; rating: number; review?: string }
 ): Promise<void> {
-  const movie = dataStore.getMovie(movieId);
-  if (!movie) {
-    throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
-  }
-
-  // 更新状态
-  const updatedMovie = { ...movie, status: '已看完' as const };
-
-  // 状态变为已看完 → 自动将进度设为100%
-  if (updatedMovie.progress?.totalEpisodes) {
-    updatedMovie.progress = {
-      ...updatedMovie.progress,
-      episode: updatedMovie.progress.totalEpisodes,
-    };
-  }
-
-  const folderName = getMovieFolderName(updatedMovie.title, updatedMovie.releaseDate);
-  const movieDir = getMovieDir(folderName);
-
-  if (!fs.existsSync(movieDir)) {
-    fs.mkdirSync(movieDir, { recursive: true });
-  }
-
+  const movieDir = ensureMovieDir(movieId);
   const metadataPath = getMetadataPath(movieDir);
-  await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updatedMovie, null, 2), 'utf-8');
-  });
+  const diaryPath = getDiaryPath(movieDir);
+  const watchRecordsPath = getWatchRecordsPath(movieDir);
 
-  dataStore.setMovie(movieId, updatedMovie);
+  await writeQueue.enqueue(metadataPath, async () => {
+    const current = dataStore.getMovie(movieId);
+    if (!current) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
+    const updatedMovie = { ...current, status: '已看完' as const };
+
+    // 状态变为已看完 → 自动将进度设为100%
+    if (updatedMovie.progress?.totalEpisodes) {
+      updatedMovie.progress = {
+        ...updatedMovie.progress,
+        episode: updatedMovie.progress.totalEpisodes,
+      };
+    }
+
+    writeJsonAtomicSync(metadataPath, updatedMovie);
+    dataStore.setMovie(movieId, updatedMovie);
+  });
 
   // 状态变更始终写入自动日记。
   const watchTime = getLocalTimeStr();
@@ -123,15 +115,12 @@ export async function markAsWatched(
     kind: 'status',
   };
 
-  const entries = dataStore.getDiary(movieId);
-  entries.push(statusEntry);
-
-  const diaryPath = getDiaryPath(movieDir);
   await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify(entries, null, 2), 'utf-8');
+    const entries = dataStore.getDiary(movieId);
+    const next = [...entries, statusEntry];
+    writeJsonAtomicSync(diaryPath, next);
+    dataStore.setDiary(movieId, next);
   });
-
-  dataStore.setDiary(movieId, entries);
 
   // 用户主动填写的评分/短评单独保存为手动追剧记录。
   if (hasManualContent) {
@@ -142,11 +131,10 @@ export async function markAsWatched(
       rating: entryData.rating,
       review: entryData.review,
     };
-    const watchRecords = [...dataStore.getWatchRecords(movieId), watchRecord];
-    const watchRecordsPath = getWatchRecordsPath(movieDir);
     await writeQueue.enqueue(watchRecordsPath, async () => {
-      fs.writeFileSync(watchRecordsPath, JSON.stringify(watchRecords, null, 2), 'utf-8');
+      const records = [...dataStore.getWatchRecords(movieId), watchRecord];
+      writeJsonAtomicSync(watchRecordsPath, records);
+      dataStore.setWatchRecords(movieId, records);
     });
-    dataStore.setWatchRecords(movieId, watchRecords);
   }
 }

@@ -17,18 +17,18 @@ export async function deleteDiaryEntry(movieId: string, entryId: string): Promis
   const movie = dataStore.getMovie(movieId);
   if (!movie) throw new AppError(ErrorCode.MOVIE_NOT_FOUND, '影视不存在');
 
-  const entries = dataStore.getDiary(movieId);
-  if (!entries.some((entry) => entry.id === entryId)) {
-    throw new AppError(ErrorCode.DIARY_NOT_FOUND, '观影日记不存在');
-  }
-
-  const filtered = entries.filter((entry) => entry.id !== entryId);
   const folderName = getMovieFolderName(movie.title, movie.releaseDate);
   const diaryPath = getDiaryPath(getMovieDir(folderName));
+  // 在写队列内读取最新数据、删除并原子落盘，避免并发读-改-写丢失更新。
   await writeQueue.enqueue(diaryPath, async () => {
+    const entries = dataStore.getDiary(movieId);
+    if (!entries.some((entry) => entry.id === entryId)) {
+      throw new AppError(ErrorCode.DIARY_NOT_FOUND, '观影日记不存在');
+    }
+    const filtered = entries.filter((entry) => entry.id !== entryId);
     writeJsonAtomicSync(diaryPath, filtered);
+    dataStore.setDiary(movieId, filtered);
   });
-  dataStore.setDiary(movieId, filtered);
 }
 
 // 获取时间线

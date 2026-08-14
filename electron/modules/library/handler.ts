@@ -1,12 +1,14 @@
 import path from 'path';
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/types/index.js';
+import { assertTrustedSender } from '../../utils/senderGuard.js';
 import * as service from './service.js';
 import { getLibraryRoot } from '../../utils/paths.js';
 import { dataStore } from '../../store/dataStore.js';
 
 export function registerLibraryHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.LIBRARY_OPEN, async (event) => {
+    assertTrustedSender(event);
     const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory'],
@@ -18,11 +20,13 @@ export function registerLibraryHandlers(): void {
     return service.openLibrary(result.filePaths[0]);
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_REOPEN, async (_event, dirPath: string) => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_REOPEN, async (event, dirPath: string) => {
+    assertTrustedSender(event);
     return service.openLibrary(dirPath);
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_PATH, async () => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_PATH, async (event) => {
+    assertTrustedSender(event);
     try {
       return getLibraryRoot();
     } catch {
@@ -31,6 +35,7 @@ export function registerLibraryHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.LIBRARY_CREATE, async (event, name: string) => {
+    assertTrustedSender(event);
     const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory', 'createDirectory'],
@@ -46,6 +51,7 @@ export function registerLibraryHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.LIBRARY_CREATE_BACKUP, async (event) => {
+    assertTrustedSender(event);
     const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
     const result = await dialog.showOpenDialog(win!, {
       properties: ['openDirectory', 'createDirectory'],
@@ -58,19 +64,23 @@ export function registerLibraryHandlers(): void {
     return service.createFullBackup(result.filePaths[0]);
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_INFO, async () => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_INFO, async (event) => {
+    assertTrustedSender(event);
     return service.getLibraryInfo();
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_SUMMARY, async () => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_SUMMARY, async (event) => {
+    assertTrustedSender(event);
     return service.getSummary();
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_RECENT_WATCHES, async (_event, days?: number) => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_RECENT_WATCHES, async (event, days?: number) => {
+    assertTrustedSender(event);
     return service.getRecentWatches(days);
   });
 
-  ipcMain.handle(IPC_CHANNELS.LIBRARY_IS_LOADED, async () => {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_IS_LOADED, async (event) => {
+    assertTrustedSender(event);
     return dataStore.loaded;
   });
 }

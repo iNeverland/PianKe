@@ -1,7 +1,8 @@
 import { clipboard, desktopCapturer, globalShortcut, ipcMain, nativeImage, screen, type BrowserWindow } from 'electron';
-import { closeCropWindow, getCropData, getCropMovieId, getCropMovies, startCropWindow } from './cropWindow.js';
-import { closeMoviePickerWindow, showMoviePickerWindow } from './moviePickerWindow.js';
+import { closeCropWindow, getCropData, getCropMovieId, getCropMovies, getCropWindowWebContents, startCropWindow } from './cropWindow.js';
+import { closeMoviePickerWindow, getMoviePickerWebContents, showMoviePickerWindow } from './moviePickerWindow.js';
 import { showScreenToast } from './toast.js';
+import { assertTrustedSender } from '../../utils/senderGuard.js';
 import type { ScreenshotInfo, ScreenshotMoviePickerItem } from '../../../shared/types/index.js';
 
 type MainWindowGetter = () => BrowserWindow | null;
@@ -35,14 +36,22 @@ export function unregisterScreenshotShortcut(): void {
 }
 
 export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainWindowGetter): void {
-  ipcMain.handle('shortcut:register', (_event, accelerator: string) => registerScreenshotShortcut(accelerator, getMainWindow));
-  ipcMain.handle('shortcut:unregister', () => unregisterScreenshotShortcut());
+  ipcMain.handle('shortcut:register', (event, accelerator: string) => {
+    assertTrustedSender(event);
+    return registerScreenshotShortcut(accelerator, getMainWindow);
+  });
+  ipcMain.handle('shortcut:unregister', (event) => {
+    assertTrustedSender(event);
+    return unregisterScreenshotShortcut();
+  });
 
-  ipcMain.handle('screen-toast:show', (_event, message: string, duration?: number) => {
+  ipcMain.handle('screen-toast:show', (event, message: string, duration?: number) => {
+    assertTrustedSender(event);
     showScreenToast(message, duration);
   });
 
-  ipcMain.handle('desktop-capturer:getSources', async () => {
+  ipcMain.handle('desktop-capturer:getSources', async (event) => {
+    assertTrustedSender(event);
     const sources = await desktopCapturer.getSources({
       types: ['screen', 'window'],
       thumbnailSize: { width: 320, height: 180 },
@@ -54,7 +63,8 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     }));
   });
 
-  ipcMain.handle('desktop-capturer:getPrimaryScreenSnapshot', async () => {
+  ipcMain.handle('desktop-capturer:getPrimaryScreenSnapshot', async (event) => {
+    assertTrustedSender(event);
     const primaryDisplay = screen.getPrimaryDisplay();
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
@@ -91,13 +101,21 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     return source.thumbnail.toDataURL();
   });
 
-  ipcMain.handle('crop:start', (_event, movieId: string | null, fullScreenDataUrl: string, movies?: ScreenshotMoviePickerItem[]) => {
+  ipcMain.handle('crop:start', (event, movieId: string | null, fullScreenDataUrl: string, movies?: ScreenshotMoviePickerItem[]) => {
+    assertTrustedSender(event);
     startCropWindow(baseDir, movieId, fullScreenDataUrl, Array.isArray(movies) ? movies : []);
   });
 
-  ipcMain.handle('crop:get-data', () => getCropData());
-  ipcMain.handle('crop:cancel', () => closeCropWindow());
-  ipcMain.handle('crop:save', async (_event, croppedDataUrl: string) => {
+  ipcMain.handle('crop:get-data', (event) => {
+    assertTrustedSender(event, getCropWindowWebContents());
+    return getCropData();
+  });
+  ipcMain.handle('crop:cancel', (event) => {
+    assertTrustedSender(event, getCropWindowWebContents());
+    return closeCropWindow();
+  });
+  ipcMain.handle('crop:save', async (event, croppedDataUrl: string) => {
+    assertTrustedSender(event, getCropWindowWebContents());
     const cropMovieId = getCropMovieId();
     if (!cropMovieId) {
       const movies = getCropMovies();
@@ -121,7 +139,8 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     closeCropWindow();
   });
 
-  ipcMain.handle('screenshot:movie-picker-select', async (_event, movieId: string) => {
+  ipcMain.handle('screenshot:movie-picker-select', async (event, movieId: string) => {
+    assertTrustedSender(event, getMoviePickerWebContents());
     if (!pendingCroppedDataUrl) return;
     const dataUrl = pendingCroppedDataUrl;
     pendingCroppedDataUrl = null;
@@ -136,7 +155,8 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     }
   });
 
-  ipcMain.handle('screenshot:movie-picker-cancel', () => {
+  ipcMain.handle('screenshot:movie-picker-cancel', (event) => {
+    assertTrustedSender(event, getMoviePickerWebContents());
     pendingCroppedDataUrl = null;
     closeMoviePickerWindow();
   });

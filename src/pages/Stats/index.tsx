@@ -350,7 +350,7 @@ export default function Stats() {
           <div className="stat-card-icon">
             <AppIcon name="star" className="w-5 h-5" />
           </div>
-          <div className="stat-value">{overview?.avgPersonalRating ?? '—'}<span className="stat-unit">/10</span></div>
+          <div className="stat-value">{overview?.avgPersonalRating != null ? <>{overview.avgPersonalRating}<span className="stat-unit">/10</span></> : '—'}</div>
           <div className="stat-label">平均评分</div>
         </div>
         <div className="stat-card">

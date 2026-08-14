@@ -105,13 +105,6 @@ const electronAPI = {
   // 启动桌面裁剪窗口（从非详情页发起时同步当前数据源的影片列表）
   startCrop: (movieId, fullScreenDataUrl, movies) => ipcRenderer.invoke('crop:start', movieId, fullScreenDataUrl, movies),
 
-  // 监听截图保存完成
-  onScreenshotSaved: (callback) => {
-    const handler = (_event, screenshots) => callback(screenshots);
-    ipcRenderer.on('screenshot:saved', handler);
-    return () => ipcRenderer.removeListener('screenshot:saved', handler);
-  },
-
   // 裁剪窗口完成后将图片交给渲染进程上传到当前云端账号。
   onScreenshotCropped: (callback) => {
     const handler = (_event, movieId, dataUrl) => callback(movieId, dataUrl);
@@ -133,8 +126,8 @@ const electronAPI = {
   movie: {
     list: (filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST, filters),
     getById: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_BY_ID, id),
-    create: (data, posterFilePath) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_CREATE, data, posterFilePath),
-    update: (id, data, posterFilePath) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE, id, data, posterFilePath),
+    create: (data) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_CREATE, data),
+    update: (id, data) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE, id, data),
     delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE, id),
     search: (query, filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_SEARCH, query, filters),
     updateProgress: (id, episode) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_PROGRESS, id, episode),

@@ -30,7 +30,6 @@ export interface ElectronAPI {
   getDesktopSources: () => Promise<{ id: string; name: string; thumb: string }[]>;
   getPrimaryScreenSnapshot: () => Promise<string | null>;
   startCrop: (movieId: string | null, fullScreenDataUrl: string, movies?: ScreenshotMoviePickerItem[]) => Promise<void>;
-  onScreenshotSaved: (callback: (screenshots: ScreenshotInfo[]) => void) => () => void;
   onScreenshotCropped: (callback: (movieId: string, dataUrl: string) => void) => () => void;
   library: {
     open: () => Promise<LibraryInfo | null>;
@@ -46,8 +45,8 @@ export interface ElectronAPI {
   movie: {
     list: (filters?: Record<string, unknown>) => Promise<MovieSummary[]>;
     getById: (id: string) => Promise<MovieMetadata>;
-    create: (data: Record<string, unknown>, posterFilePath?: string) => Promise<MovieMetadata>;
-    update: (id: string, data: Record<string, unknown>, posterFilePath?: string) => Promise<MovieMetadata>;
+    create: (data: Record<string, unknown>) => Promise<MovieMetadata>;
+    update: (id: string, data: Record<string, unknown>) => Promise<MovieMetadata>;
     delete: (id: string) => Promise<void>;
     search: (query: string, filters?: { year?: string; minRating?: number; maxRating?: number }) => Promise<MovieSummary[]>;
     updateProgress: (id: string, episode: number) => Promise<MovieMetadata>;

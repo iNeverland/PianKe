@@ -89,7 +89,8 @@ function parseSearchFilters(input: string): {
   // 文本查询 = 去除评分语法后、但保留年份
   const query = cleaned.replace(/\s+/g, ' ').trim();
 
-  return { query: query || input.trim(), year, minRating, maxRating };
+  // 纯评分语法（如 ">8"、"<=6"）不产生文本查询，避免把语法当标题关键词导致空结果。
+  return { query: query || (minRating !== undefined || maxRating !== undefined ? '' : input.trim()), year, minRating, maxRating };
 }
 
 const RATING_OPTIONS: { label: string; value: string }[] = [

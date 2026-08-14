@@ -107,7 +107,7 @@ export function getDashboard(): StatsDashboard {
     overview: {
       totalMovies: movies.length,
       totalHours: round1(totalMinutes / 60),
-      avgPersonalRating: personalRatingCount > 0 ? round1(totalRating / personalRatingCount) : 0,
+      avgPersonalRating: personalRatingCount > 0 ? round1(totalRating / personalRatingCount) : null,
       mostWatchedGenre,
     },
     byType: (['电影', '剧集', '综艺', '纪录片', '动画'] as const).map(type => ({ type, count: byTypeCount[type] || 0 })),
@@ -151,7 +151,7 @@ export function getOverview(): StatsOverview {
       }
     }
   }
-  const avgRating = ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : 0;
+  const avgRating = ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : null;
 
   // 最常看类型（全部影视）
   const genreCount: Record<string, number> = {};
@@ -386,7 +386,7 @@ export function getMonthSummary(year: number, month: number): MonthSummary {
     month,
     totalMovies: movies.length,
     totalHours: Math.round((totalMinutes / 60) * 10) / 10,
-    avgRating: ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : 0,
+    avgRating: ratingCount > 0 ? Math.round((totalRating / ratingCount) * 10) / 10 : null,
     topGenres,
     movies,
     diaryEntries,

@@ -35,6 +35,11 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
   }, [movie.id, movie.posterThumbPath]);
 
   const handleImgLoad = useCallback(() => setImgLoaded(true), []);
+  const handleImgError = useCallback(() => {
+    // 海报 URL 失效/离线时回退到占位图标，避免骨架屏与评分/状态徽标永久隐藏。
+    setImgLoaded(true);
+    setPosterUrl(null);
+  }, []);
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -100,6 +105,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
               loading="lazy"
               decoding="async"
               onLoad={handleImgLoad}
+              onError={handleImgError}
               className={imgLoaded ? 'loaded' : 'loading'}
               style={imgLoaded ? undefined : { opacity: 0 }}
             />

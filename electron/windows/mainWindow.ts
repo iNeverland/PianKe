@@ -19,7 +19,7 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
     trafficLightPosition: { x: 18, y: 12 },
     webPreferences: {
       preload: path.join(options.baseDir, 'preload.cjs'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -43,6 +43,15 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
   });
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('window:maximizeChanged', false);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[main-window] render process gone:', details.reason);
+    if (!mainWindow.isDestroyed()) mainWindow.reload();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('[main-window] failed to load:', errorCode, errorDescription);
   });
 
   return mainWindow;

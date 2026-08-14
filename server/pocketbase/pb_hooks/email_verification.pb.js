@@ -285,5 +285,9 @@ onRecordUpdateRequest((e) => {
   if (body.password || body.passwordConfirm || body.oldPassword) {
     throw new ForbiddenError('修改密码前请完成邮箱验证码验证');
   }
+  // 防止用户绕过验证码直接改邮箱或伪造验证状态；改邮箱需走新的发码→核验流程。
+  if (body.verified !== undefined || body.email !== undefined) {
+    throw new ForbiddenError('邮箱与验证状态不可通过此接口修改');
+  }
   e.next();
 }, 'users');

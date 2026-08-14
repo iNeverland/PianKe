@@ -44,7 +44,7 @@ export function showScreenToast(message: string, duration = 2200): void {
       show: false,
       backgroundColor: '#00000000',
       webPreferences: {
-        sandbox: false,
+        sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
       },
