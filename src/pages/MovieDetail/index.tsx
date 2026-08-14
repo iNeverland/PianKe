@@ -25,6 +25,7 @@ export default function MovieDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showProgress, setShowProgress] = useState(false);
   const [showFinishWatching, setShowFinishWatching] = useState(false);
+  const [updatingProgress, setUpdatingProgress] = useState(false);
   const [localSegs, setLocalSegs] = useState<string[] | null>(null);
   const localSegsRef = useRef(localSegs);
   localSegsRef.current = localSegs;
@@ -44,6 +45,7 @@ export default function MovieDetail() {
   const [uploadHovered, setUploadHovered] = useState(false);
   const [wallHovered, setWallHovered] = useState(false);
   const [castOpen, setCastOpen] = useState(false);
+  const [uploadingScreenshots, setUploadingScreenshots] = useState(false);
   const castRef = useRef<HTMLDivElement>(null);
 
   // 点击外部关闭主演弹窗
@@ -289,6 +291,7 @@ export default function MovieDetail() {
           if (entryToDelete) {
             const restored = await api.watchRecord.add(id, {
               watchDate: entryToDelete.watchDate,
+              watchTime: entryToDelete.watchTime,
               rating: entryToDelete.rating,
               review: entryToDelete.review || '',
             });
@@ -336,7 +339,7 @@ export default function MovieDetail() {
   }
 
   async function handleNextEpisode() {
-    if (!id || !movie?.progress?.totalEpisodes) return;
+    if (!id || !movie?.progress?.totalEpisodes || updatingProgress) return;
     const p = movie.progress;
     const nextEp = Math.min(p.episode + 1, p.totalEpisodes);
     if (nextEp >= p.totalEpisodes) {
@@ -344,14 +347,21 @@ export default function MovieDetail() {
       return;
     }
 
+    const previousMovie = movie;
+    setMovie({ ...movie, progress: { ...p, episode: nextEp } });
+    setProgressForm({ episode: nextEp });
+    setUpdatingProgress(true);
     try {
       const updated = await api.movie.updateProgress(id, nextEp);
       setMovie(updated);
-      setProgressForm({ episode: nextEp });
       void refreshDiary();
       showToast(`进度 第${nextEp}集`);
     } catch (err: any) {
+      setMovie(previousMovie);
+      setProgressForm({ episode: p.episode });
       showToast(err.message || '更新失败');
+    } finally {
+      setUpdatingProgress(false);
     }
   }
 
@@ -388,23 +398,46 @@ export default function MovieDetail() {
   }
 
   async function handleUploadScreenshots(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+    const files = Array.from(e.target.files || []);
     if (!files || !id) return;
-    for (const file of Array.from(files)) {
+    const maxFileSize = 30 * 1024 * 1024;
+    if (files.length > 20) {
+      showToast('一次最多上传 20 张截图');
+      e.target.value = '';
+      return;
+    }
+    const validFiles = files.filter((file) => file.type.startsWith('image/') && file.size <= maxFileSize);
+    if (validFiles.length !== files.length) showToast('已跳过非图片或超过 30 MB 的文件');
+    if (!validFiles.length) {
+      e.target.value = '';
+      return;
+    }
+    setUploadingScreenshots(true);
+    let failures = 0;
+    const upload = async (file: File) => {
       try {
-        const dataUrl = await new Promise<string>((resolve) => {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error(`无法读取 ${file.name}`));
           reader.readAsDataURL(file);
         });
         const ext = '.' + ((file.name.split('.').pop()) || 'jpg');
-        const updated = await api.movie.addScreenshot(id, dataUrl, ext);
-        setScreenshots(updated);
-      } catch (err: any) {
-        showToast(err.message || '上传失败');
+        await api.movie.addScreenshot(id, dataUrl, ext);
+      } catch {
+        failures++;
       }
+    };
+    try {
+      for (let offset = 0; offset < validFiles.length; offset += 3) {
+        await Promise.all(validFiles.slice(offset, offset + 3).map(upload));
+      }
+      setScreenshots(await api.movie.listScreenshots(id));
+      showToast(failures ? `${validFiles.length - failures} 张已上传，${failures} 张失败` : `已上传 ${validFiles.length} 张截图`);
+    } finally {
+      setUploadingScreenshots(false);
+      e.target.value = '';
     }
-    e.target.value = '';
   }
 
   async function handleDeleteScreenshot(filename: string) {
@@ -430,12 +463,18 @@ export default function MovieDetail() {
 
   async function handleSaveTimestamp(filename: string) {
     if (!id) return;
+    const parseValue = (value: string, min: number, max: number, label: string): number | undefined => {
+      if (value === '') return undefined;
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < min || parsed > max) throw new Error(`${label}应在 ${min}-${max} 之间`);
+      return parsed;
+    };
     try {
       const info = {
-        episode: parseInt(timestampForm.episode) || 1,
-        hours: timestampForm.hours !== '' ? parseInt(timestampForm.hours) : undefined,
-        minutes: timestampForm.minutes !== '' ? parseInt(timestampForm.minutes) : undefined,
-        seconds: timestampForm.seconds !== '' ? parseInt(timestampForm.seconds) : undefined,
+        episode: parseValue(timestampForm.episode || '1', 1, 999, '集数') || 1,
+        hours: parseValue(timestampForm.hours, 0, 23, '小时'),
+        minutes: parseValue(timestampForm.minutes, 0, 59, '分钟'),
+        seconds: parseValue(timestampForm.seconds, 0, 59, '秒数'),
       };
       const updated = await api.movie.updateScreenshotInfo(id, filename, info);
       setScreenshots(updated);
@@ -755,6 +794,7 @@ export default function MovieDetail() {
               type="file"
               accept="image/*"
               multiple
+              disabled={uploadingScreenshots}
               className="hidden"
               onChange={handleUploadScreenshots}
             />
@@ -930,7 +970,7 @@ export default function MovieDetail() {
             <button onClick={() => setShowProgress(true)} className="btn btn-secondary btn-sm">
               更新进度
             </button>
-            <button onClick={handleNextEpisode} className="btn btn-secondary btn-sm" title="下一集">
+            <button onClick={handleNextEpisode} className="btn btn-secondary btn-sm" title="下一集" disabled={updatingProgress}>
               下一集
             </button>
           </div>

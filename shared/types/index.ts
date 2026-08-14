@@ -164,6 +164,8 @@ export interface SearchFilters {
 // 截图信息
 export interface ScreenshotInfo {
   filename: string;
+  /** 创建时间，用于跨设备保持照片墙顺序。 */
+  createdAt?: string;
   /** 截图时间戳元数据（用户手动填写） */
   episode?: number;
   hours?: number;

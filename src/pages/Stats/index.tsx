@@ -28,6 +28,19 @@ function EmptyHint() {
 }
 
 function useChartTheme() {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setVersion((value) => value + 1));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const onMediaChange = () => setVersion((value) => value + 1);
+    media.addEventListener('change', onMediaChange);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener('change', onMediaChange);
+    };
+  }, []);
+
   return useMemo(() => {
     const style = getComputedStyle(document.documentElement);
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark'
@@ -38,7 +51,7 @@ function useChartTheme() {
       border: style.getPropertyValue('--border').trim() || '#e8e7e3',
       isDark,
     };
-  }, []);
+  }, [version]);
 }
 
 export default function Stats() {

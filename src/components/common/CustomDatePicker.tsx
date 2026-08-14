@@ -34,6 +34,15 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
   function openPicker() {
     const d = value ? new Date(value + 'T00:00:00') : new Date();
     setViewYear(d.getFullYear());
@@ -117,13 +126,13 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
 
   return (
     <div ref={ref} className={`custom-datepicker ${className}`}>
-      <button type="button" className="custom-datepicker-trigger" onClick={openPicker}>
+      <button type="button" className="custom-datepicker-trigger" onClick={openPicker} aria-haspopup="dialog" aria-expanded={open} aria-label={value ? `上映日期：${value}` : '选择上映日期'}>
         <span className={value ? 'custom-datepicker-value' : 'custom-datepicker-placeholder'}>{displayText}</span>
         <AppIcon name="calendar" className="custom-datepicker-icon" />
       </button>
 
       {open && (
-        <div className="custom-datepicker-popup">
+        <div className="custom-datepicker-popup" role="dialog" aria-label="选择日期">
           {showYearPicker ? (
             <>
               {/* Year picker header */}

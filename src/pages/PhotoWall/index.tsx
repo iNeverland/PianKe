@@ -38,16 +38,8 @@ interface WallMovie {
   screenshotCount: number;
 }
 
-function screenshotOrder(filename: string): number {
-  const match = filename.match(/^shot_(\d+)/);
-  return match ? Number(match[1]) : 0;
-}
-
 function sortScreenshotsNewestFirst(screenshots: ScreenshotInfo[]): ScreenshotInfo[] {
-  return [...screenshots].sort((a, b) => {
-    const bySequence = screenshotOrder(a.filename) - screenshotOrder(b.filename);
-    return bySequence || b.filename.localeCompare(a.filename);
-  });
+  return [...screenshots].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || '') || b.filename.localeCompare(a.filename));
 }
 
 function compareMoviesByPinyin(a: WallMovie, b: WallMovie): number {
@@ -265,7 +257,7 @@ export default function PhotoWall() {
             ],
           };
         });
-        if (active) setMovies(groups);
+        if (active) setMovies(groups.filter((movie) => movie.media.some((media) => media.kind === 'screenshot' || media.hasPoster)));
       } catch (error) {
         console.error('加载照片墙失败', error);
       } finally {

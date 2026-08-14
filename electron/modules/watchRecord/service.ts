@@ -1,8 +1,8 @@
-import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
 import { getMovieDir, getMovieFolderName, getWatchRecordsPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
+import { writeJsonAtomicSync } from '../../utils/atomicWrite.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import { CreateWatchRecordInputSchema } from '../../../shared/schemas/index.js';
@@ -18,7 +18,7 @@ function getMovieDirectory(movieId: string): string {
 async function persist(movieId: string, entries: WatchRecord[]): Promise<void> {
   const recordsPath = getWatchRecordsPath(getMovieDirectory(movieId));
   await writeQueue.enqueue(recordsPath, async () => {
-    fs.writeFileSync(recordsPath, JSON.stringify(entries, null, 2), 'utf-8');
+    writeJsonAtomicSync(recordsPath, entries);
   });
   dataStore.setWatchRecords(movieId, entries);
 }

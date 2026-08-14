@@ -42,7 +42,9 @@ Function InstallPathPageShow
   Pop $0
   SendMessage $0 ${WM_SETFONT} $FontSection 1
 
-  ${NSD_CreateDirRequest} 0 72u 78% 14u "$PROGRAMFILES64\PianKe"
+  ; $INSTDIR 在更新安装时由 electron-updater 传入现有安装目录；
+  ; 首次安装时则由 NSIS 的 per-user 默认目录初始化。
+  ${NSD_CreateDirRequest} 0 72u 78% 14u "$INSTDIR"
   Pop $DirRequest
   SendMessage $DirRequest ${WM_SETFONT} $FontBody 1
   SetCtlColors $DirRequest 0x333333 0xf5f5f5

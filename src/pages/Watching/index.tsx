@@ -38,12 +38,22 @@ export default function Watching() {
   }
 
   async function saveProgress(movie: MovieSummary, episode: number) {
+    const previousProgress = movie.progress;
+    if (!previousProgress) return;
+    setMovies((prev) => prev.map((item) => (
+      item.id === movie.id
+        ? { ...item, progress: { ...previousProgress, episode } }
+        : item
+    )));
     try {
       setUpdatingMovieId(movie.id);
       const updated = await api.movie.updateProgress(movie.id, episode);
       setMovies((prev) => prev.map((m) => (m.id === movie.id ? { ...m, progress: updated.progress } : m)));
       showToast(`「${movie.title}」进度 第${episode}集`);
     } catch (err: any) {
+      setMovies((prev) => prev.map((item) => (
+        item.id === movie.id ? { ...item, progress: previousProgress } : item
+      )));
       showToast(err.message || '操作失败');
     } finally {
       setUpdatingMovieId(null);

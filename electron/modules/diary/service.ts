@@ -1,7 +1,7 @@
-import fs from 'fs';
 import { dataStore } from '../../store/dataStore.js';
 import { getMovieDir, getMovieFolderName, getDiaryPath } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
+import { writeJsonAtomicSync } from '../../utils/atomicWrite.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
 import type { DiaryEntry, DiaryTimelineMonth, DiaryTimelineDay } from '../../../shared/types/index.js';
@@ -26,7 +26,7 @@ export async function deleteDiaryEntry(movieId: string, entryId: string): Promis
   const folderName = getMovieFolderName(movie.title, movie.releaseDate);
   const diaryPath = getDiaryPath(getMovieDir(folderName));
   await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify(filtered, null, 2), 'utf-8');
+    writeJsonAtomicSync(diaryPath, filtered);
   });
   dataStore.setDiary(movieId, filtered);
 }

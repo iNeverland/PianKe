@@ -6,6 +6,7 @@ import { writeQueue } from '../../utils/writeQueue.js';
 export const UPDATE_STATE_EVENT = 'update:stateChanged';
 
 let started = false;
+let installRequested = false;
 let activeCheckSource: UpdateCheckSource = 'automatic';
 let state: AppUpdateState = {
   status: 'idle',
@@ -89,9 +90,18 @@ export function downloadUpdate(): boolean {
 }
 
 async function restartAndInstall(): Promise<void> {
+  if (installRequested) return;
+  installRequested = true;
+
   // 等待已经提交的日记、进度等文件写入完成，再关闭安装。
   await writeQueue.drain();
-  setTimeout(() => autoUpdater.quitAndInstall(), 150);
+  // Squirrel.Mac 会在旧进程完全退出前启动新版本。提前释放单实例锁，
+  // 防止新版本因无法取得锁而立即退出。
+  if (process.platform === 'darwin') {
+    app.releaseSingleInstanceLock();
+  }
+  // Windows 使用 NSIS 静默安装，完成后强制重新启动；macOS 由原生更新器无界面处理。
+  autoUpdater.quitAndInstall(true, true);
 }
 
 export function startAutoUpdater(): void {
@@ -104,8 +114,10 @@ export function startAutoUpdater(): void {
   }
 
   autoUpdater.autoDownload = false;
-  // 下载完成后由各平台原生更新器接管安装；同时保留显式重启流程，确保数据先写入。
-  autoUpdater.autoInstallOnAppQuit = true;
+  // 更新只在下载完成后的显式流程中安装，避免普通退出也触发安装。
+  autoUpdater.autoInstallOnAppQuit = false;
+  // 不依赖 electron-updater 的默认值，安装完成后必须拉起新版本。
+  autoUpdater.autoRunAppAfterInstall = true;
   autoUpdater.allowPrerelease = false;
 
   autoUpdater.on('checking-for-update', () => {

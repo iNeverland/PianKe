@@ -10,9 +10,11 @@ class DataStore {
   private watchRecords: Map<string, WatchRecord[]> = new Map();
   private _loaded = false;
 
-  // 海报 base64 缓存（LRU，最多 200 条）
+  // 海报 base64 缓存（LRU，同时限制条数和估算内存占用）。
   private posterCache: Map<string, string> = new Map();
   private static readonly POSTER_CACHE_MAX = 200;
+  private static readonly POSTER_CACHE_MAX_BYTES = 24 * 1024 * 1024;
+  private posterCacheBytes = 0;
 
   // ---- 加载状态 ----
   get loaded(): boolean { return this._loaded; }
@@ -98,17 +100,30 @@ class DataStore {
   }
 
   setPoster(key: string, base64: string): void {
-    if (this.posterCache.size >= DataStore.POSTER_CACHE_MAX) {
+    const previous = this.posterCache.get(key);
+    if (previous !== undefined) {
+      this.posterCache.delete(key);
+      this.posterCacheBytes -= this.posterSize(previous);
+    }
+    const incomingBytes = this.posterSize(base64);
+    while (this.posterCache.size >= DataStore.POSTER_CACHE_MAX || this.posterCacheBytes + incomingBytes > DataStore.POSTER_CACHE_MAX_BYTES) {
       // 淘汰最旧的条目
-      const firstKey = this.posterCache.keys().next().value;
-      if (firstKey !== undefined) this.posterCache.delete(firstKey);
+      const first = this.posterCache.entries().next().value as [string, string] | undefined;
+      if (!first) break;
+      this.posterCache.delete(first[0]);
+      this.posterCacheBytes -= this.posterSize(first[1]);
     }
     this.posterCache.set(key, base64);
+    this.posterCacheBytes += incomingBytes;
   }
 
   invalidatePoster(movieId: string): void {
     for (const key of this.posterCache.keys()) {
-      if (key.startsWith(movieId)) this.posterCache.delete(key);
+      if (key.startsWith(movieId)) {
+        const value = this.posterCache.get(key);
+        this.posterCache.delete(key);
+        if (value !== undefined) this.posterCacheBytes -= this.posterSize(value);
+      }
     }
   }
 
@@ -120,7 +135,14 @@ class DataStore {
     this.diaries.clear();
     this.watchRecords.clear();
     this.posterCache.clear();
+    this.posterCacheBytes = 0;
     this._loaded = false;
+  }
+
+  private posterSize(value: string): number {
+    // JavaScript strings generally use two bytes per code unit; this is a
+    // conservative cap that does not require decoding every base64 payload.
+    return value.length * 2;
   }
 }
 

@@ -1,6 +1,7 @@
 import path from 'path';
 import { BrowserWindow, dialog, ipcMain } from 'electron';
 import { IPC_CHANNELS } from '../../../shared/types/index.js';
+import { getLocalDateStr } from '../../../shared/utils/date.js';
 import * as service from './service.js';
 
 export function registerMovieHandlers(): void {
@@ -50,7 +51,7 @@ export function registerMovieHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.MOVIE_EXPORT_EXCEL, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender) || BrowserWindow.getFocusedWindow();
-    const date = new Date().toISOString().slice(0, 10);
+    const date = getLocalDateStr();
     const result = await dialog.showSaveDialog(win!, {
       title: '导出影视数据',
       defaultPath: path.join('PianKe-影视数据-' + date + '.xlsx'),

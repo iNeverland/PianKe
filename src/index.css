@@ -465,6 +465,7 @@ select:focus-visible,
   z-index: 2;
 }
 .sidebar-profile-entry img { display: block; width: 50px; height: 50px; margin: 0 auto; border: 2px solid rgba(255, 255, 255, 0.8); border-radius: 50%; object-fit: cover; background: var(--bg-card); box-shadow: var(--shadow-md); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, border-color 0.2s ease; }
+.sidebar-profile-entry:hover:not(:disabled) { background: transparent; color: inherit; border-color: transparent; }
 .sidebar-profile-entry:hover img { transform: scale(1.1); box-shadow: 0 5px 16px rgba(0, 0, 0, 0.16); }
 .sidebar-profile-entry.active img { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), var(--shadow-md); }
 .sidebar-profile-entry .nav-tooltip { white-space: nowrap; }
@@ -1119,6 +1120,7 @@ select:focus-visible,
   background: transparent; border: none; padding: 0;
   font-family: inherit; text-align: left; width: 100%;
 }
+.movie-card:hover:not(:disabled) { background: transparent; color: inherit; border-color: transparent; }
 .movie-card:hover { transform: translateY(-2px); }
 .movie-card:active { transform: translateY(0); }
 .movie-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1568,7 +1570,7 @@ select:focus-visible,
   padding: 12px 0;
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: margin-left 0.35s cubic-bezier(0.22, 1, 0.36, 1), padding 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.35s ease, background 0.25s ease;
   margin-left: 28px;
   position: relative;
 }
@@ -1952,7 +1954,7 @@ select.form-input {
 }
 .form-tag-input::placeholder { color: var(--text-muted); }
 .form-tag-input:focus { border-color: var(--accent); }
-.form-tag-add-btn { height: 38px; }
+.form-tag-add-btn.btn-sm { height: 38px; min-height: 38px; }
 
 /* ═══ 照片墙 ═══ */
 .photo-wall-page { padding-bottom: 36px; }
@@ -3378,6 +3380,36 @@ button.titlebar-btn-close:hover {
   color: #fff;
   border-color: #e81123;
 }
+
+/* 轻量文本/图标操作不使用悬浮底色，避免界面出现无意义的色块。
+   实心按钮、已选状态和系统窗口控制按钮保留原有视觉反馈。 */
+:is(
+  .btn-ghost,
+  .section-link,
+  .quick-action-btn:not(.primary),
+  .tool-icon:not(.active),
+  .sort-trigger,
+  .sort-item:not(.active),
+  .filter-chip:not(.active),
+  .custom-select-item:not(.active),
+  .custom-datepicker-nav,
+  .custom-datepicker-title-btn,
+  .custom-datepicker-day:not(.selected),
+  .custom-datepicker-year:not(.selected),
+  .status-btn:not(.active),
+  .tag-selectable:not(.selected),
+  .form-poster-btn,
+  .context-menu-item,
+  .modal-close-btn,
+  .profile-dialog-close,
+  .photo-wall-lightbox-close,
+  .photo-wall-lightbox-nav
+):hover:not(:disabled) {
+  background: transparent;
+  color: var(--accent);
+  border-color: currentColor;
+  filter: none;
+}
 .modal-overlay { background: rgba(0, 0, 0, 0.48); }
 .modal-content { background: var(--bg-elevated); border-color: var(--border); border-radius: 8px; box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32); }
 .modal-title { font-family: var(--font-ui); font-size: 20px; line-height: 28px; font-weight: 600; }
@@ -3416,8 +3448,8 @@ button.titlebar-btn-close:hover {
 }
 .form-poster-zone { border-radius: 8px; box-shadow: none; background: var(--bg-card); }
 
-.timeline-item { border-radius: 4px; transition: background var(--transition); }
-.timeline-item:hover { margin-left: 28px; padding: 12px; background: var(--bg-card-hover); }
+.timeline-item { border-radius: 4px; }
+.timeline-item:hover { margin-left: 16px; padding: 12px; background: var(--bg-card-hover); }
 .diary-date-text,
 .timeline-month { font-family: var(--font-ui); }
 .settings-section { padding: 20px 0; animation: none; }

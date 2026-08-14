@@ -52,6 +52,7 @@ function toCloudUser(record: RecordModel | null): CloudUser | null {
 }
 
 export function getCloudUser(): CloudUser | null {
+  if (!pocketbase.authStore.isValid) return null;
   return toCloudUser(pocketbase.authStore.record);
 }
 
@@ -109,6 +110,45 @@ export function isCloudAuthenticated(): boolean {
   return pocketbase.authStore.isValid && Boolean(pocketbase.authStore.record?.id);
 }
 
+function isAuthenticationFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('status' in error)) return false;
+  const { status } = error as { status?: unknown };
+  return status === 401 || status === 403;
+}
+
+/**
+ * PocketBase 的 create/update/delete rule 被无效 JWT 拒绝时，在部分版本中会返回
+ * 没有字段详情的 400。再次 authRefresh 能区分真实的表单校验失败和失效会话。
+ */
+export async function isInvalidCloudSessionAfterWriteFailure(error: unknown): Promise<boolean> {
+  if (isAuthenticationFailure(error)) {
+    logoutCloud();
+    return true;
+  }
+  if (!error || typeof error !== 'object') return false;
+  const { status, message } = error as { status?: unknown; message?: unknown };
+  if (status !== 400 || !/^Failed to (create|update|delete) record\.$/.test(String(message || ''))) return false;
+  try {
+    await pocketbase.collection('users').authRefresh();
+    return false;
+  } catch (refreshError) {
+    if (!isAuthenticationFailure(refreshError)) return false;
+    logoutCloud();
+    return true;
+  }
+}
+
+async function validateCloudSession(): Promise<void> {
+  if (!isCloudAuthenticated()) return;
+  try {
+    // 仅验证本地持久化的会话。网络故障会保留离线数据；认证被服务器拒绝时才清除令牌。
+    await pocketbase.collection('users').authRefresh();
+  } catch (error) {
+    if (isAuthenticationFailure(error)) logoutCloud();
+    throw error;
+  }
+}
+
 async function refreshAvatarFileToken(): Promise<void> {
   const user = pocketbase.authStore.record;
   if (!user?.avatar) return;
@@ -139,6 +179,10 @@ export async function requestRegisterCode(email: string): Promise<void> {
   await pocketbase.send('/api/pianke/auth/send-register-code', { method: 'POST', body: { email: email.trim() } });
 }
 
+export async function requestPasswordResetCode(email: string): Promise<void> {
+  await pocketbase.send('/api/pianke/auth/send-password-reset-code', { method: 'POST', body: { email: email.trim() } });
+}
+
 export async function registerCloud(email: string, password: string, displayName: string, code: string): Promise<void> {
   const normalizedEmail = email.trim();
   await pocketbase.send('/api/pianke/auth/register', {
@@ -146,6 +190,13 @@ export async function registerCloud(email: string, password: string, displayName
     body: { email: normalizedEmail, password, displayName: displayName.trim(), code: code.trim() },
   });
   await loginCloud(normalizedEmail, password);
+}
+
+export async function resetCloudPassword(email: string, password: string, code: string): Promise<void> {
+  await pocketbase.send('/api/pianke/auth/reset-password', {
+    method: 'POST',
+    body: { email: email.trim(), password, code: code.trim() },
+  });
 }
 
 export function logoutCloud(): void {
@@ -171,7 +222,15 @@ export async function updateCloudProfile(data: { displayName: string; avatar?: F
   form.append('displayName', data.displayName.trim());
   if (data.avatar instanceof File) form.append('avatar', data.avatar);
   if (data.avatar === null) form.append('avatar-', '');
-  const record = await pocketbase.collection('users').update<RecordModel>(user.id, form);
+  let record: RecordModel;
+  try {
+    record = await pocketbase.collection('users').update<RecordModel>(user.id, form);
+  } catch (error) {
+    if (await isInvalidCloudSessionAfterWriteFailure(error)) {
+      throw new Error('登录状态已失效，请重新登录后重试');
+    }
+    throw error;
+  }
   syncCloudUser(record);
   await refreshAvatarFileToken();
   if (record.avatar) void cacheAvatarFromRemote(record, String(record.avatar));
@@ -198,7 +257,10 @@ export function subscribeCloudAuth(listener: (user: CloudUser | null) => void): 
   // 已持久化的会话必须立即进入应用。头像文件 token 是可选增强，断网时不能让它
   // 阻塞 IndexedDB 快照恢复与首屏渲染。
   listener(getCloudUser());
-  void refreshCloudUser().then((user) => listener(user)).catch(() => {});
+  void validateCloudSession()
+    .then(() => refreshCloudUser())
+    .then((user) => listener(user))
+    .catch(() => {});
   return pocketbase.authStore.onChange(() => {
     listener(getCloudUser());
     void refreshCloudUser().then((user) => listener(user)).catch(() => {});

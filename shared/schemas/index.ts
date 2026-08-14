@@ -1,5 +1,27 @@
 import { z } from 'zod';
 
+function isValidDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  return date.getFullYear() === Number(year)
+    && date.getMonth() === Number(month) - 1
+    && date.getDate() === Number(day);
+}
+
+function isValidTime(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+  return Boolean(match && Number(match[1]) <= 23 && Number(match[2]) <= 59 && (match[3] === undefined || Number(match[3]) <= 59));
+}
+
+const OptionalDateSchema = z.union([
+  z.string().refine(isValidDate, '日期无效'),
+  z.literal(''),
+]);
+const RequiredDateSchema = z.string().refine(isValidDate, '日期格式不正确');
+const OptionalTimeSchema = z.string().refine(isValidTime, '时间格式不正确');
+
 export const ProgressSchema = z.preprocess((val: any) => {
   // 迁移旧多季格式 {season, episode, seasonEpisodes} → 新单集格式 {episode, totalEpisodes}
   if (val && typeof val === 'object' && Array.isArray(val.seasonEpisodes)) {
@@ -12,7 +34,7 @@ export const ProgressSchema = z.preprocess((val: any) => {
     return { episode: watched, totalEpisodes };
   }
   // 迁移更旧的格式 {totalSeasons, totalEpisodes}（v1）
-  if (val && typeof val === 'object' && 'totalSeasons' in val && !('seasonEpisodes' in val) && !('totalEpisodes' in val)) {
+  if (val && typeof val === 'object' && 'totalSeasons' in val && !('seasonEpisodes' in val) && 'totalEpisodes' in val) {
     const totalEpisodes = (val.totalEpisodes as number) || 0;
     const seasonCount = (val.totalSeasons as number) || 1;
     const epsPerSeason = Math.ceil(totalEpisodes / seasonCount);
@@ -39,15 +61,15 @@ export const MovieMetadataSchema = z.object({
   director: z.string(),
   cast: z.array(z.string()).default([]),
   // 上映日期允许未知；表单一直允许留空，加载校验也必须与之保持一致。
-  releaseDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal('')]),
+  releaseDate: OptionalDateSchema,
   country: z.string(),
   genre: z.array(z.string()),
   tags: z.array(z.string()).default([]),
   runtime: z.number().int().nonnegative(),
   synopsis: z.string().optional(),
   rating: z.number().min(0).max(10), // 公共评分 0-10
-  posterPath: z.string().optional(),
-  posterThumbPath: z.string().optional(),
+  posterPath: z.string().regex(/^[^/\\]+$/).optional(),
+  posterThumbPath: z.string().regex(/^[^/\\]+$/).optional(),
   status: z.enum(['在看', '已看完', '想看']),
   progress: ProgressSchema.nullable(),
   createdAt: z.string().datetime({ offset: true }),
@@ -56,8 +78,8 @@ export const MovieMetadataSchema = z.object({
 
 export const DiaryEntrySchema = z.object({
   id: z.string().uuid(),
-  watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  watchDate: RequiredDateSchema,
+  watchTime: OptionalTimeSchema.optional(),
   rating: z.literal(-1),
   review: z.string().optional(),
   images: z.array(z.string()).max(9).default([]),
@@ -66,8 +88,8 @@ export const DiaryEntrySchema = z.object({
 
 export const WatchRecordSchema = z.object({
   id: z.string().uuid(),
-  watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  watchDate: RequiredDateSchema,
+  watchTime: OptionalTimeSchema.optional(),
   rating: z.number().min(0).max(10),
   review: z.string().optional(),
 });
@@ -86,7 +108,7 @@ export const CreateMovieInputSchema = z.object({
   mediaType: z.enum(['电影', '剧集', '综艺', '纪录片', '动画']),
   director: z.string().optional().default(''),
   cast: z.array(z.string()).default([]),
-  releaseDate: z.string().optional().default(''),
+  releaseDate: OptionalDateSchema.optional().default(''),
   country: z.string().optional().default(''),
   genre: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
@@ -103,8 +125,8 @@ export const CreateMovieInputSchema = z.object({
 
 // 用于创建手动追剧记录的输入校验
 export const CreateWatchRecordInputSchema = z.object({
-  watchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不正确'),
-  watchTime: z.string().regex(/^\d{2}:\d{2}(?::\d{2})?$/).optional(),
+  watchDate: RequiredDateSchema,
+  watchTime: OptionalTimeSchema.optional(),
   rating: z.number().min(0).max(10), // 个人评分 0-10（5 星制，每星 2 分）
   review: z.string().optional(),
 });
@@ -116,7 +138,7 @@ export const UpdateMovieInputSchema = z.object({
   mediaType: z.enum(['电影', '剧集', '综艺', '纪录片', '动画']).optional(),
   director: z.string().optional(),
   cast: z.array(z.string()).optional(),
-  releaseDate: z.string().optional(),
+  releaseDate: OptionalDateSchema.optional(),
   country: z.string().optional(),
   genre: z.array(z.string()).optional(),
   tags: z.array(z.string()).optional(),
@@ -128,4 +150,5 @@ export const UpdateMovieInputSchema = z.object({
   rewatchCount: z.number().int().nonnegative().optional(),
   posterBase64: z.string().optional(),
   posterExt: z.string().optional(),
+  removePoster: z.boolean().optional(),
 });

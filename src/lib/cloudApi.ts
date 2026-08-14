@@ -6,7 +6,7 @@ import type {
   StatsOverview, WatchRecord, WatchStatus,
 } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr, parseLocalDate } from '@shared/utils/date';
-import { getCloudUser, pocketbase } from './pocketbase';
+import { getCloudUser, isInvalidCloudSessionAfterWriteFailure, pocketbase } from './pocketbase';
 import { getOfflineMedia, getOfflineSnapshot, requestPersistentOfflineStorage, saveOfflineMedia, saveOfflineSnapshot } from './offlineCache';
 
 type CloudMovieRecord = RecordModel & Record<string, unknown>;
@@ -86,6 +86,17 @@ function requireUserId(): string {
   return user.id;
 }
 
+async function cloudWrite<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (await isInvalidCloudSessionAfterWriteFailure(error)) {
+      throw new Error('登录状态已失效，请重新登录后重试');
+    }
+    throw error;
+  }
+}
+
 function invalidateSnapshot(): void {
   snapshotCache = null;
   snapshotRequest = null;
@@ -125,6 +136,26 @@ function updateOfflineSnapshot(update: (snapshot: Snapshot) => Snapshot): void {
   indexSnapshot(next);
   snapshotCache = { value: next, expiresAt: Date.now() + SNAPSHOT_TTL_MS };
   void saveOfflineSnapshot(ownerId, next).catch(() => {});
+}
+
+function persistMovieUpdate(updated: CloudMovieRecord): void {
+  invalidateSnapshot();
+  scheduleCloudSync();
+  movieRecordCache.set(updated.id, updated);
+  movieDetailCache.set(updated.id, updated);
+  updateOfflineSnapshot((snapshot) => ({
+    ...snapshot,
+    movies: snapshot.movies.map((movie) => (movie.id === updated.id ? updated : movie)),
+  }));
+}
+
+function persistSystemDiary(diary: CloudDiaryRecord): void {
+  invalidateSnapshot();
+  scheduleCloudSync();
+  updateOfflineSnapshot((snapshot) => ({
+    ...snapshot,
+    diaries: [...snapshot.diaries, diary],
+  }));
 }
 
 function isSnapshot(value: unknown): value is Snapshot {
@@ -454,9 +485,9 @@ function formDataWithFile(payload: Record<string, unknown>, field: string, file:
 }
 
 async function createSystemDiary(movieId: string, kind: 'progress' | 'status', review: string, watchDate = getLocalDateStr()): Promise<CloudDiaryRecord> {
-  return pocketbase.collection('diary_entries').create<CloudDiaryRecord>({
+  return cloudWrite(() => pocketbase.collection('diary_entries').create<CloudDiaryRecord>({
     owner: requireUserId(), movie: movieId, watchDate, watchTime: getLocalTimeStr(), rating: -1, kind, review,
-  });
+  }));
 }
 
 async function getProtectedFileToken(): Promise<string> {
@@ -767,6 +798,7 @@ function screenshotsToMap(records: CloudRecord[]): Map<string, ScreenshotInfo[]>
     const items = grouped.get(movieId) || [];
     items.push({
       filename: record.id,
+      createdAt: stringField(record, 'created') || undefined,
       episode: typeof record.episode === 'number' ? record.episode : undefined,
       hours: typeof record.hours === 'number' ? record.hours : undefined,
       minutes: typeof record.minutes === 'number' ? record.minutes : undefined,
@@ -889,9 +921,9 @@ export const cloudApi = {
       if (current.some((movie) => movie.title === data.title && movie.releaseDate.slice(0, 4) === year)) throw new Error(`影视「${data.title}」已存在`);
       const payload = { owner: userId, ...publicFields(data) };
       const poster = posterFile(data);
-      const created = await pocketbase.collection('movies').create<CloudMovieRecord>(poster
+      const created = await cloudWrite(() => pocketbase.collection('movies').create<CloudMovieRecord>(poster
         ? formDataWithFile(payload, 'poster', poster)
-        : payload);
+        : payload));
       invalidateSnapshot();
       scheduleCloudSync();
       movieRecordCache.set(created.id, created);
@@ -906,26 +938,24 @@ export const cloudApi = {
       const poster = posterFile(data);
       let updated: CloudMovieRecord;
       if (poster) {
-        updated = await pocketbase.collection('movies').update<CloudMovieRecord>(id, formDataWithFile(payload, 'poster', poster));
+        updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, formDataWithFile(payload, 'poster', poster)));
       } else {
-        updated = await pocketbase.collection('movies').update<CloudMovieRecord>(id, payload);
+        updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, payload));
       }
       const next = toMetadata(updated);
-      let systemDiary: CloudDiaryRecord | null = null;
-      if (previous.status !== next.status && (next.status === '在看' || next.status === '已看完')) systemDiary = await createSystemDiary(id, 'status', `状态变更为「${next.status}」`);
-      invalidateSnapshot();
-      scheduleCloudSync();
-      movieRecordCache.set(id, updated);
-      movieDetailCache.set(id, updated);
-      updateOfflineSnapshot((snapshot) => ({
-        ...snapshot,
-        movies: snapshot.movies.map((movie) => (movie.id === id ? updated : movie)),
-        ...(systemDiary ? { diaries: [...snapshot.diaries, systemDiary] } : {}),
-      }));
+      // 影片记录已经成功写入后，不应因可选的自动日记失败而向界面返回失败。
+      persistMovieUpdate(updated);
+      if (previous.status !== next.status && (next.status === '在看' || next.status === '已看完')) {
+        try {
+          persistSystemDiary(await createSystemDiary(id, 'status', `状态变更为「${next.status}」`));
+        } catch (error) {
+          console.warn('[cloud] Failed to create status diary after updating movie', error);
+        }
+      }
       return next;
     },
     delete: async (id: string): Promise<void> => {
-      await pocketbase.collection('movies').delete(id);
+      await cloudWrite(() => pocketbase.collection('movies').delete(id));
       movieRecordCache.delete(id);
       movieDetailCache.delete(id);
       invalidateSnapshot();
@@ -949,15 +979,14 @@ export const cloudApi = {
       const previous = await cloudApi.movie.getById(id);
       if (!previous.progress?.totalEpisodes) throw new Error('该影视不支持进度追踪');
       const value = Math.max(0, Math.min(episode, previous.progress.totalEpisodes));
-      const updated = await pocketbase.collection('movies').update<CloudMovieRecord>(id, { progress: { ...previous.progress, episode: value } });
-      const systemDiary = await createSystemDiary(id, 'progress', `第${value}集 · 进度 ${Math.round(value / previous.progress.totalEpisodes * 100)}%`);
-      invalidateSnapshot();
-      scheduleCloudSync();
-      updateOfflineSnapshot((snapshot) => ({
-        ...snapshot,
-        movies: snapshot.movies.map((movie) => (movie.id === id ? updated : movie)),
-        diaries: [...snapshot.diaries, systemDiary],
-      }));
+      const updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, { progress: { ...previous.progress, episode: value } }));
+      // 进度是主记录，自动日记是附属记录。两者无法在浏览器侧组成服务器事务。
+      persistMovieUpdate(updated);
+      try {
+        persistSystemDiary(await createSystemDiary(id, 'progress', `第${value}集 · 进度 ${Math.round(value / previous.progress.totalEpisodes * 100)}%`));
+      } catch (error) {
+        console.warn('[cloud] Failed to create progress diary after updating movie', error);
+      }
       return toMetadata(updated);
     },
     addTag: async (id: string, tag: string): Promise<MovieMetadata> => { const movie = await cloudApi.movie.getById(id); return cloudApi.movie.update(id, { tags: [...new Set([...movie.tags, tag])] }); },
@@ -965,12 +994,12 @@ export const cloudApi = {
     getAllTags: async (): Promise<string[]> => [...new Set((await summaries()).flatMap((movie) => movie.tags))].sort((a, b) => a.localeCompare(b, 'zh')),
     getPosterUrl: async (id: string, thumb?: boolean): Promise<string | null> => fileUrl(await getMovieRecord(id), 'poster', thumb ? POSTER_THUMB_SIZE : undefined),
     exportExcel: async () => { throw new Error('云端数据导出将在下一版提供；当前服务器已执行每日备份。'); },
-    listScreenshots: async (movieId: string): Promise<ScreenshotInfo[]> => (await getScreenshotsForMovie(movieId)).map((record) => ({ filename: record.id, episode: typeof record.episode === 'number' ? record.episode : undefined, hours: typeof record.hours === 'number' ? record.hours : undefined, minutes: typeof record.minutes === 'number' ? record.minutes : undefined, seconds: typeof record.seconds === 'number' ? record.seconds : undefined })),
+    listScreenshots: async (movieId: string): Promise<ScreenshotInfo[]> => (await getScreenshotsForMovie(movieId)).map((record) => ({ filename: record.id, createdAt: stringField(record, 'created') || undefined, episode: typeof record.episode === 'number' ? record.episode : undefined, hours: typeof record.hours === 'number' ? record.hours : undefined, minutes: typeof record.minutes === 'number' ? record.minutes : undefined, seconds: typeof record.seconds === 'number' ? record.seconds : undefined })),
     addScreenshot: async (movieId: string, base64: string, ext: string): Promise<ScreenshotInfo[]> => {
       const [header, content = ''] = base64.split(',', 2); const mime = header.match(/^data:([^;]+);base64$/)?.[1] || 'image/jpeg';
       const bytes = Uint8Array.from(atob(content || base64), (char) => char.charCodeAt(0));
       const form = new FormData(); form.append('owner', requireUserId()); form.append('movie', movieId); form.append('image', new File([bytes], `screenshot${ext.startsWith('.') ? ext : `.${ext}`}`, { type: mime }));
-      const created = await pocketbase.collection('screenshots').create<CloudRecord>(form);
+      const created = await cloudWrite(() => pocketbase.collection('screenshots').create<CloudRecord>(form));
       invalidateSnapshot();
       scheduleCloudSync();
       screenshotRecordCache.set(created.id, created);
@@ -980,7 +1009,7 @@ export const cloudApi = {
       return cloudApi.movie.listScreenshots(movieId);
     },
     deleteScreenshot: async (movieId: string, screenshotId: string): Promise<ScreenshotInfo[]> => {
-      await pocketbase.collection('screenshots').delete(screenshotId);
+      await cloudWrite(() => pocketbase.collection('screenshots').delete(screenshotId));
       invalidateSnapshot();
       scheduleCloudSync();
       screenshotRecordCache.delete(screenshotId);
@@ -992,7 +1021,7 @@ export const cloudApi = {
     getScreenshot: async (_movieId: string, screenshotId: string): Promise<string | null> => fileUrl(await getScreenshotRecord(screenshotId), 'image'),
     getScreenshotThumbnail: async (_movieId: string, screenshotId: string): Promise<string | null> => fileUrl(await getScreenshotRecord(screenshotId), 'image', SCREENSHOT_THUMB_SIZE),
     updateScreenshotInfo: async (movieId: string, screenshotId: string, info: { episode?: number; hours?: number; minutes?: number; seconds?: number }): Promise<ScreenshotInfo[]> => {
-      const updated = await pocketbase.collection('screenshots').update<CloudRecord>(screenshotId, info);
+      const updated = await cloudWrite(() => pocketbase.collection('screenshots').update<CloudRecord>(screenshotId, info));
       invalidateSnapshot();
       scheduleCloudSync();
       screenshotRecordCache.set(screenshotId, updated);
@@ -1005,7 +1034,7 @@ export const cloudApi = {
   diary: {
     getByMovie: async (movieId: string): Promise<DiaryEntry[]> => sortByMomentDesc((await getDiaryEntriesForMovie(movieId)).map(toDiary)),
     delete: async (_movieId: string, entryId: string): Promise<void> => {
-      await pocketbase.collection('diary_entries').delete(entryId);
+      await cloudWrite(() => pocketbase.collection('diary_entries').delete(entryId));
       invalidateSnapshot();
       scheduleCloudSync();
       updateOfflineSnapshot((snapshot) => ({ ...snapshot, diaries: snapshot.diaries.filter((entry) => entry.id !== entryId) }));
@@ -1023,21 +1052,21 @@ export const cloudApi = {
   watchRecord: {
     getByMovie: async (movieId: string): Promise<WatchRecord[]> => sortByMomentDesc((await getWatchRecordsForMovie(movieId)).map(toWatchRecord)),
     add: async (movieId: string, data: Record<string, unknown>): Promise<WatchRecord> => {
-      const record = await pocketbase.collection('watch_records').create<CloudRecord>({ owner: requireUserId(), movie: movieId, watchDate: data.watchDate, watchTime: data.watchTime || getLocalTimeStr(), rating: data.rating || 0, review: data.review || '' });
+      const record = await cloudWrite(() => pocketbase.collection('watch_records').create<CloudRecord>({ owner: requireUserId(), movie: movieId, watchDate: data.watchDate, watchTime: data.watchTime || getLocalTimeStr(), rating: data.rating || 0, review: data.review || '' }));
       invalidateSnapshot();
       scheduleCloudSync();
       updateOfflineSnapshot((snapshot) => ({ ...snapshot, watchRecords: [...snapshot.watchRecords, record] }));
       return toWatchRecord(record);
     },
     update: async (_movieId: string, entryId: string, data: Record<string, unknown>): Promise<WatchRecord> => {
-      const record = await pocketbase.collection('watch_records').update<CloudRecord>(entryId, data);
+      const record = await cloudWrite(() => pocketbase.collection('watch_records').update<CloudRecord>(entryId, data));
       invalidateSnapshot();
       scheduleCloudSync();
       updateOfflineSnapshot((snapshot) => ({ ...snapshot, watchRecords: snapshot.watchRecords.map((entry) => (entry.id === entryId ? record : entry)) }));
       return toWatchRecord(record);
     },
     delete: async (_movieId: string, entryId: string): Promise<void> => {
-      await pocketbase.collection('watch_records').delete(entryId);
+      await cloudWrite(() => pocketbase.collection('watch_records').delete(entryId));
       invalidateSnapshot();
       scheduleCloudSync();
       updateOfflineSnapshot((snapshot) => ({ ...snapshot, watchRecords: snapshot.watchRecords.filter((entry) => entry.id !== entryId) }));
@@ -1094,7 +1123,7 @@ export async function migrateLocalLibraryToCloud(): Promise<LocalMigrationResult
       localApi.movie.listScreenshots(movie.id),
     ]);
     await Promise.all(diaries.map(async (entry) => {
-      await pocketbase.collection('diary_entries').create({ owner: requireUserId(), movie: created.id, watchDate: entry.watchDate, watchTime: entry.watchTime || '', rating: -1, kind: entry.kind, review: entry.review || '' });
+      await cloudWrite(() => pocketbase.collection('diary_entries').create({ owner: requireUserId(), movie: created.id, watchDate: entry.watchDate, watchTime: entry.watchTime || '', rating: -1, kind: entry.kind, review: entry.review || '' }));
       result.importedDiaries++;
     }));
     await Promise.all(records.map(async (entry) => {

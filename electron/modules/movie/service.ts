@@ -3,8 +3,9 @@ import path from 'path';
 import * as XLSX from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { dataStore } from '../../store/dataStore.js';
-import { getMovieDir, getMovieFolderName, getMetadataPath, getDiaryPath, getWatchRecordsPath, getScreenshotsDir } from '../../utils/paths.js';
+import { getLibraryRoot, getMovieDir, getMovieFolderName, getMetadataPath, getDiaryPath, getWatchRecordsPath, getScreenshotsDir } from '../../utils/paths.js';
 import { writeQueue } from '../../utils/writeQueue.js';
+import { writeJsonAtomicSync } from '../../utils/atomicWrite.js';
 import { createPosterThumbnail, needsPosterThumbnailRegen } from '../../utils/thumbnail.js';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
@@ -19,6 +20,15 @@ function getPersonalRating(movieId: string): number | null {
   const rated = entries.filter(e => e.rating > 0);
   if (rated.length === 0) return null;
   return Math.round(rated.reduce((sum, e) => sum + e.rating, 0) / rated.length * 10) / 10;
+}
+
+async function persistLibraryMovieCount(): Promise<void> {
+  const info = dataStore.getLibraryInfo();
+  if (!info) return;
+  const libraryPath = path.join(getLibraryRoot(), 'library.json');
+  await writeQueue.enqueue(libraryPath, async () => {
+    writeJsonAtomicSync(libraryPath, info);
+  });
 }
 
 function getLatestWatchDate(movieId: string): string {
@@ -176,19 +186,19 @@ export async function createMovie(
   // 写入 metadata.json
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2), 'utf-8');
+    writeJsonAtomicSync(metadataPath, metadata);
   });
 
   // 创建空的 diary.json
   const diaryPath = getDiaryPath(movieDir);
   await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify([], null, 2), 'utf-8');
+    writeJsonAtomicSync(diaryPath, []);
   });
 
   // 创建空的 watch-records.json
   const watchRecordsPath = getWatchRecordsPath(movieDir);
   await writeQueue.enqueue(watchRecordsPath, async () => {
-    fs.writeFileSync(watchRecordsPath, JSON.stringify([], null, 2), 'utf-8');
+    writeJsonAtomicSync(watchRecordsPath, []);
   });
 
   // 更新内存
@@ -196,6 +206,7 @@ export async function createMovie(
   dataStore.setDiary(id, []);
   dataStore.setWatchRecords(id, []);
   dataStore.updateMovieCount();
+  await persistLibraryMovieCount();
 
   return metadata;
 }
@@ -294,7 +305,7 @@ export async function updateMovie(
   // 写入文件
   const metadataPath = getMetadataPath(newMovieDir);
   await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
+    writeJsonAtomicSync(metadataPath, updated);
   });
 
   dataStore.setMovie(id, updated);
@@ -313,7 +324,7 @@ export async function updateMovie(
       dataStore.setDiary(id, diaryEntries);
       const diaryPath = getDiaryPath(newMovieDir);
       await writeQueue.enqueue(diaryPath, async () => {
-        fs.writeFileSync(diaryPath, JSON.stringify(diaryEntries, null, 2), 'utf-8');
+        writeJsonAtomicSync(diaryPath, diaryEntries);
       });
     }
   }
@@ -361,7 +372,7 @@ export async function updateMovie(
     dataStore.setDiary(id, diaryEntries);
     const diaryPath = getDiaryPath(newMovieDir);
     await writeQueue.enqueue(diaryPath, async () => {
-      fs.writeFileSync(diaryPath, JSON.stringify(diaryEntries, null, 2), 'utf-8');
+      writeJsonAtomicSync(diaryPath, diaryEntries);
     });
   }
 
@@ -487,6 +498,7 @@ export async function deleteMovie(id: string): Promise<void> {
 
   dataStore.removeMovie(id);
   dataStore.updateMovieCount();
+  await persistLibraryMovieCount();
 }
 
 // 搜索影视（支持可选的年份/评分过滤）
@@ -569,7 +581,7 @@ export async function updateProgress(
   const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
+    writeJsonAtomicSync(metadataPath, updated);
   });
 
   dataStore.setMovie(id, updated);
@@ -612,7 +624,7 @@ export async function updateProgress(
   dataStore.setDiary(id, diaryEntries);
   const diaryPath = getDiaryPath(movieDir);
   await writeQueue.enqueue(diaryPath, async () => {
-    fs.writeFileSync(diaryPath, JSON.stringify(diaryEntries, null, 2), 'utf-8');
+    writeJsonAtomicSync(diaryPath, diaryEntries);
   });
 
   return updated;
@@ -632,7 +644,7 @@ export async function addTag(id: string, tag: string): Promise<MovieMetadata> {
   const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
+    writeJsonAtomicSync(metadataPath, updated);
   });
 
   dataStore.setMovie(id, updated);
@@ -651,7 +663,7 @@ export async function removeTag(id: string, tag: string): Promise<MovieMetadata>
   const movieDir = getMovieDir(folderName);
   const metadataPath = getMetadataPath(movieDir);
   await writeQueue.enqueue(metadataPath, async () => {
-    fs.writeFileSync(metadataPath, JSON.stringify(updated, null, 2), 'utf-8');
+    writeJsonAtomicSync(metadataPath, updated);
   });
 
   dataStore.setMovie(id, updated);
@@ -734,7 +746,7 @@ export async function migrateThumbnails(): Promise<void> {
           movie.posterThumbPath = thumbFilename;
           const metadataPath = getMetadataPath(movieDir);
           await writeQueue.enqueue(metadataPath, async () => {
-            fs.writeFileSync(metadataPath, JSON.stringify(movie, null, 2), 'utf-8');
+            writeJsonAtomicSync(metadataPath, movie);
           });
         }
         count++;
@@ -787,7 +799,7 @@ function readScreenshotsMeta(screenshotsDir: string): ScreenshotMetaMap {
 function writeScreenshotsMeta(screenshotsDir: string, meta: ScreenshotMetaMap): void {
   const metaPath = getScreenshotsMetaPath(screenshotsDir);
   fs.mkdirSync(screenshotsDir, { recursive: true });
-  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2), 'utf-8');
+  writeJsonAtomicSync(metaPath, meta);
 }
 
 /** 列出所有截图，只返回轻量元数据；缩略图由渲染进程按需单独加载。 */
@@ -808,6 +820,7 @@ export function listScreenshots(id: string, cachedMeta?: ScreenshotMetaMap): Scr
     const entry = meta[filename];
     return {
       filename,
+      createdAt: fs.statSync(path.join(screenshotsDir, filename)).mtime.toISOString(),
       episode: entry?.episode,
       hours: entry?.hours,
       minutes: entry?.minutes,
@@ -837,38 +850,36 @@ export function updateScreenshotInfo(
 export async function addScreenshot(id: string, base64Data: string, ext: string): Promise<ScreenshotInfo[]> {
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
-  fs.mkdirSync(screenshotsDir, { recursive: true });
+  let result: ScreenshotInfo[] = [];
+  await writeQueue.enqueue(screenshotsDir, async () => {
+    fs.mkdirSync(screenshotsDir, { recursive: true });
+    const existing = fs.readdirSync(screenshotsDir).filter(f => !f.includes('_thumb') && f !== 'screenshots.json');
+    let maxNum = 0;
+    for (const file of existing) {
+      const match = file.match(/^shot_(\d+)\./);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
+    }
+    const nextNum = maxNum + 1;
+    const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`;
+    const filename = `shot_${String(nextNum).padStart(3, '0')}${normalizedExt}`;
+    const baseName = `shot_${String(nextNum).padStart(3, '0')}`;
+    const thumbFilename = `${baseName}_thumb${normalizedExt}`;
+    const base64Raw = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const buffer = Buffer.from(base64Raw, 'base64');
+    fs.writeFileSync(path.join(screenshotsDir, filename), buffer);
 
-  // 确定下一个序号
-  const existing = fs.readdirSync(screenshotsDir).filter(f => !f.includes('_thumb') && f !== 'screenshots.json');
-  let maxNum = 0;
-  for (const f of existing) {
-    const match = f.match(/^shot_(\d+)\./);
-    if (match) maxNum = Math.max(maxNum, parseInt(match[1], 10));
-  }
-  const nextNum = maxNum + 1;
-  const normalizedExt = ext.startsWith('.') ? ext : `.${ext}`;
-  const filename = `shot_${String(nextNum).padStart(3, '0')}${normalizedExt}`;
-  const baseName = `shot_${String(nextNum).padStart(3, '0')}`;
-  const thumbFilename = `${baseName}_thumb${normalizedExt}`;
-
-  // 保存原图
-  const base64Raw = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-  const buffer = Buffer.from(base64Raw, 'base64');
-  fs.writeFileSync(path.join(screenshotsDir, filename), buffer);
-
-  // 生成缩略图
-  try {
-    const sharp = (await import('sharp')).default;
-    await sharp(buffer)
-      .resize(500, 281, { fit: 'cover' })
-      .jpeg({ quality: 85 })
-      .toFile(path.join(screenshotsDir, thumbFilename));
-  } catch {
-    fs.writeFileSync(path.join(screenshotsDir, thumbFilename), buffer);
-  }
-
-  return listScreenshots(id);
+    try {
+      const sharp = (await import('sharp')).default;
+      await sharp(buffer)
+        .resize(500, 281, { fit: 'cover' })
+        .jpeg({ quality: 85 })
+        .toFile(path.join(screenshotsDir, thumbFilename));
+    } catch {
+      fs.writeFileSync(path.join(screenshotsDir, thumbFilename), buffer);
+    }
+    result = listScreenshots(id);
+  });
+  return result;
 }
 
 /** 删除截图（含缩略图 + 元数据），返回更新后列表 */
