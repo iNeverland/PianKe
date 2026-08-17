@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
-import appLogo from '@/assets/brand/PianKe.svg';
 
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -20,12 +19,7 @@ export default function TitleBar() {
 
   return (
     <div className={`titlebar${isMac ? ' titlebar-mac' : ''}`}>
-      <div className="titlebar-drag">
-        <div className="titlebar-brand" aria-hidden="true">
-          <img src={appLogo} alt="" />
-          <span>片刻</span>
-        </div>
-      </div>
+      <div className="titlebar-drag" />
       {!isMac && (
         <div className="titlebar-controls">
           <button className="titlebar-btn" onClick={handleMinimize} title="最小化" aria-label="最小化">

@@ -1,6 +1,6 @@
 import type { RecordModel } from 'pocketbase';
 import type {
-  DiaryCalendarEntry, DiaryEntry, DiaryTimelineMonth, LibraryInfo, MonthSummary,
+  DiaryCalendarEntry, DiaryEntry, DiaryTimelineMonth, MonthSummary,
   MovieMetadata, MovieSummary, Progress, ScreenshotInfo, StatsByCountry, StatsByGenre,
   StatsByRating, StatsByType, StatsByYear, StatsDashboard, StatsMonthlyTrend,
   StatsOverview, WatchRecord, WatchStatus,
@@ -18,15 +18,6 @@ interface Snapshot {
   diaries: CloudDiaryRecord[];
   watchRecords: CloudRecord[];
   screenshots: CloudRecord[];
-}
-
-export interface LocalMigrationResult {
-  cancelled: boolean;
-  importedMovies: number;
-  skippedMovies: number;
-  importedDiaries: number;
-  importedWatchRecords: number;
-  importedScreenshots: number;
 }
 
 const SNAPSHOT_TTL_MS = 60_000;
@@ -882,24 +873,12 @@ async function buildDashboard(): Promise<StatsDashboard> {
 
 export const cloudApi = {
   library: {
-    open: async (): Promise<LibraryInfo | null> => cloudApi.library.getInfo(),
-    reopen: async (): Promise<LibraryInfo | null> => cloudApi.library.getInfo(),
-    create: async (): Promise<LibraryInfo | null> => cloudApi.library.getInfo(),
-    getPath: async (): Promise<string | null> => 'PocketBase 云端（pb.astara.space）',
-    getInfo: async (): Promise<LibraryInfo | null> => {
-      const user = getCloudUser();
-      if (!user) return null;
-      const movies = await summaries();
-      return { name: user.displayName || user.email, version: 1, createdAt: '', movieCount: movies.length };
-    },
     getSummary: summaries,
     getRecentWatches: async (days = 30): Promise<MovieSummary[]> => {
       const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
       const cutoffString = toLocalDateString(cutoff);
       return (await summaries()).filter((movie) => (movie.latestWatchDate || '') >= cutoffString).sort((a, b) => (b.latestWatchDate || '').localeCompare(a.latestWatchDate || ''));
     },
-    createBackup: async () => null,
-    isLoaded: async () => Boolean(getCloudUser()),
   },
   movie: {
     list: async (filters?: Record<string, unknown>): Promise<MovieSummary[]> => {
@@ -1093,51 +1072,4 @@ export const cloudApi = {
   },
 };
 
-/**
- * 从用户选择的旧 .pianke 资源库复制数据到当前账号。读取始终通过 Electron IPC
- * 完成，原始 JSON 与图片文件不会删除或改写。
- */
-export async function migrateLocalLibraryToCloud(): Promise<LocalMigrationResult> {
-  const localApi = window.electronAPI;
-  const info = await localApi.library.open();
-  const empty: LocalMigrationResult = { cancelled: !info, importedMovies: 0, skippedMovies: 0, importedDiaries: 0, importedWatchRecords: 0, importedScreenshots: 0 };
-  if (!info) return empty;
 
-  const existing = new Set((await summaries()).map((movie) => `${movie.title}\u0000${movie.releaseDate.slice(0, 4)}`));
-  const result = { ...empty, cancelled: false };
-  const localMovies = await localApi.movie.list();
-  for (const summary of localMovies) {
-    const movie = await localApi.movie.getById(summary.id);
-    const key = `${movie.title}\u0000${movie.releaseDate.slice(0, 4)}`;
-    if (existing.has(key)) { result.skippedMovies++; continue; }
-
-    const posterBase64 = movie.posterPath ? await localApi.movie.getPosterUrl(movie.id) : null;
-    const mime = posterBase64?.match(/^data:([^;]+);/)?.[1] || '';
-    const posterExt = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
-    const created = await cloudApi.movie.create({ ...movie, posterBase64: posterBase64 || undefined, posterExt });
-    existing.add(key);
-    result.importedMovies++;
-
-    const [diaries, records, screenshots] = await Promise.all([
-      localApi.diary.getByMovie(movie.id),
-      localApi.watchRecord.getByMovie(movie.id),
-      localApi.movie.listScreenshots(movie.id),
-    ]);
-    await Promise.all(diaries.map(async (entry) => {
-      await cloudWrite(() => pocketbase.collection('diary_entries').create({ owner: requireUserId(), movie: created.id, watchDate: entry.watchDate, watchTime: entry.watchTime || '', rating: -1, kind: entry.kind, review: entry.review || '' }));
-      result.importedDiaries++;
-    }));
-    await Promise.all(records.map(async (entry) => {
-      await cloudApi.watchRecord.add(created.id, { watchDate: entry.watchDate, watchTime: entry.watchTime, rating: entry.rating, review: entry.review || '' });
-      result.importedWatchRecords++;
-    }));
-    for (const screenshot of screenshots) {
-      const image = await localApi.movie.getScreenshot(movie.id, screenshot.filename);
-      if (!image) continue;
-      await cloudApi.movie.addScreenshot(created.id, image, '.png');
-      result.importedScreenshots++;
-    }
-  }
-  invalidateSnapshot();
-  return result;
-}

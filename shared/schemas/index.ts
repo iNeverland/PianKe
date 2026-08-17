@@ -94,13 +94,6 @@ export const WatchRecordSchema = z.object({
   review: z.string().optional(),
 });
 
-export const LibraryInfoSchema = z.object({
-  name: z.string().min(1),
-  version: z.number().int(),
-  createdAt: z.string().datetime({ offset: true }),
-  movieCount: z.number().int().nonnegative(),
-});
-
 // 用于创建影视的输入校验
 export const CreateMovieInputSchema = z.object({
   title: z.string().min(1, '标题不能为空'),

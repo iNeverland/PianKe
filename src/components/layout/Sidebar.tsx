@@ -34,7 +34,7 @@ export default function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-capsule">
-        <button onClick={openProfile} className={`nav-item sidebar-avatar-entry${profileOpen ? ' active' : ''}`} aria-label="个人中心">
+        <button onClick={openProfile} className={`sidebar-profile-entry${profileOpen ? ' active' : ''}`} aria-label="个人中心">
           <img src={user?.avatarUrl || defaultAvatar} alt="" />
           <span className="nav-tooltip">个人中心</span>
         </button>

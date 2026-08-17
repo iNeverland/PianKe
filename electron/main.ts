@@ -34,29 +34,17 @@ function createWindow(): void {
   });
 }
 
-function sendOpenLibraryPath(filePath: string): void {
-  const targetWindow = mainWindow ?? BrowserWindow.getAllWindows()[0];
-  if (targetWindow && !targetWindow.isDestroyed() && !targetWindow.webContents.isDestroyed()) {
-    targetWindow.webContents.send('open-library-path', filePath);
-  }
-}
-
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => {
+  app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     } else {
       // macOS 上关窗后应用常驻，再次启动时主窗口可能已被销毁/置空，需重建。
       createWindow();
-    }
-
-    const libPath = argv.find((a: string) => a.endsWith('.pianke'));
-    if (libPath) {
-      sendOpenLibraryPath(libPath);
     }
   });
 }
@@ -103,13 +91,6 @@ app.whenReady().then(() => {
     void checkForUpdates('automatic');
   });
 
-  const openLibraryPath = process.argv.find(a => a.endsWith('.pianke'));
-  if (openLibraryPath && mainWindow) {
-    mainWindow.webContents.once('did-finish-load', () => {
-      sendOpenLibraryPath(openLibraryPath);
-    });
-  }
-
   app.on('will-quit', () => {
     unregisterScreenshotShortcut();
   });
@@ -117,18 +98,6 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
-    }
-  });
-});
-
-app.on('will-finish-launching', () => {
-  app.on('open-file', (_event, filePath) => {
-    if (BrowserWindow.getAllWindows().length > 0) {
-      sendOpenLibraryPath(filePath);
-    } else {
-      app.once('browser-window-created', () => {
-        setTimeout(() => sendOpenLibraryPath(filePath), 500);
-      });
     }
   });
 });
