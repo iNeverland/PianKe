@@ -1838,6 +1838,40 @@ select:focus-visible,
 .form-input:focus { border-bottom-color: var(--accent); }
 .form-input::placeholder { color: var(--text-muted); }
 
+/* 密码输入框 — 内部右侧眼睛按钮 */
+.password-input-wrap {
+  position: relative;
+  width: 100%;
+}
+.password-input-wrap .form-input {
+  padding-right: 40px;
+}
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+}
+.password-toggle:hover {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+.password-toggle:active {
+  color: var(--text-primary);
+}
+
 /* 日期输入 — 自定义日历图标 */
 input[type="date"].form-input {
   position: relative;

@@ -15,13 +15,15 @@ import clockIcon from '@/assets/icons/clock.svg?raw';
 import sunIcon from '@/assets/icons/sun.svg?raw';
 import addIcon from '@/assets/icons/add.svg?raw';
 import moonIcon from '@/assets/icons/moon.svg?raw';
+import eyeIcon from '@/assets/icons/eye.svg?raw';
+import eyeOffIcon from '@/assets/icons/eyeOff.svg?raw';
 
 export type AppIconName =
   | 'home' | 'diary' | 'photo' | 'watching' | 'watchlist' | 'stats' | 'settings'
   | 'search' | 'filter' | 'edit' | 'add' | 'sort' | 'folder' | 'star' | 'clock'
   | 'calendar' | 'screen' | 'sun' | 'moon' | 'chevronLeft' | 'chevronRight'
   | 'chevronDown' | 'chevronUp' | 'close' | 'check' | 'image' | 'doubleChevronLeft'
-  | 'doubleChevronRight' | 'download' | 'warning' | 'trash';
+  | 'doubleChevronRight' | 'download' | 'warning' | 'trash' | 'eye' | 'eyeOff';
 
 interface AppIconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   name: AppIconName;
@@ -45,6 +47,8 @@ const PROVIDED_ICONS: Partial<Record<AppIconName, string>> = {
   sun: sunIcon,
   add: addIcon,
   moon: moonIcon,
+  eye: eyeIcon,
+  eyeOff: eyeOffIcon,
   // 按用户指定复用此前提供的原图。
   image: photoIcon,
   calendar: diaryIcon,

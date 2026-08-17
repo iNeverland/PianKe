@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import appLogo from '@/assets/brand/PianKe.svg';
+import PasswordInput from '@/components/common/PasswordInput';
 import { loginCloud, registerCloud, requestPasswordResetCode, requestRegisterCode, resetCloudPassword } from '@/lib/pocketbase';
 
 type AuthMode = 'login' | 'register' | 'reset';
@@ -88,9 +89,9 @@ export default function CloudAuth() {
               <button className="btn btn-secondary whitespace-nowrap" type="button" onClick={sendCode} disabled={sendingCode || codeCooldown > 0}>{sendingCode ? '发送中…' : codeCooldown > 0 ? `${codeCooldown} 秒后重发` : '获取验证码'}</button>
             </div>
           )}
-          <input className="form-input w-full" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={isResetting ? '新密码（至少 8 位）' : '密码（至少 8 位）'} autoComplete={isRegistering || isResetting ? 'new-password' : 'current-password'} required minLength={8} />
+          <PasswordInput value={password} onChange={setPassword} placeholder={isResetting ? '新密码（至少 8 位）' : '密码（至少 8 位）'} autoComplete={isRegistering || isResetting ? 'new-password' : 'current-password'} required minLength={8} className="w-full" />
           {isResetting && (
-            <input className="form-input w-full" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="确认新密码" autoComplete="new-password" required minLength={8} />
+            <PasswordInput value={passwordConfirm} onChange={setPasswordConfirm} placeholder="确认新密码" autoComplete="new-password" required minLength={8} className="w-full" />
           )}
           {error && <p className="text-xs text-red-500 text-left px-1">{error}</p>}
           <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
