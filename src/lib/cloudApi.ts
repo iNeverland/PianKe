@@ -482,6 +482,64 @@ async function createSystemDiary(movieId: string, kind: 'progress' | 'status', r
   }));
 }
 
+/**
+ * 综艺 segments 变更 → 记录/合并 progress 日记（10 分钟内合并）。
+ * 与本地 updateMovie 行为一致：最近 10 分钟内已有的 progress 日记被更新，
+ * 否则新建一条，避免频繁编辑分段标签产生冗余记录。
+ */
+async function upsertVarietyProgressDiary(movieId: string, segments: string[]): Promise<void> {
+  const filled = segments.filter((s) => s.trim());
+  const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
+  const now = new Date();
+  const watchTime = getLocalTimeStr();
+  const TEN_MINUTES = 10 * 60 * 1000;
+
+  const existing = await getDiaryEntriesForMovie(movieId).catch(() => []);
+  const lastProgress = [...existing].reverse().find((entry) => stringField(entry, 'kind') === 'progress');
+  if (lastProgress) {
+    const entryTime = new Date(`${stringField(lastProgress, 'watchDate')}T${stringField(lastProgress, 'watchTime') || '00:00:00'}`);
+    if (now.getTime() - entryTime.getTime() <= TEN_MINUTES) {
+      // 10 分钟内已有一条 progress 日记 → 更新其 review 与 watchTime
+      const updated = await cloudWrite(() => pocketbase.collection('diary_entries').update<CloudDiaryRecord>(lastProgress.id, { watchTime, review }));
+      invalidateSnapshot();
+      scheduleCloudSync();
+      updateOfflineSnapshot((snapshot) => ({
+        ...snapshot,
+        diaries: snapshot.diaries.map((entry) => (entry.id === updated.id ? updated : entry)),
+      }));
+      return;
+    }
+  }
+  persistSystemDiary(await createSystemDiary(movieId, 'progress', review));
+}
+
+/**
+ * 截图上传前本地压缩：超长边（默认 1920px）以上的原图先缩放并转成 JPEG，
+ * 大幅减小上传体积，缩短云端上传时间与服务器缩略图生成时间。
+ * 压缩失败或原图已足够小则原样返回。
+ */
+async function compressScreenshotForUpload(dataUrl: string, maxEdge = 1920, quality = 0.85): Promise<string> {
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('decode failed'));
+      image.src = dataUrl;
+    });
+    const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale >= 1) return dataUrl; // 已经足够小，不做处理
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return dataUrl;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return dataUrl; // 压缩失败不影响上传，原样发送
+  }
+}
+
 async function getProtectedFileToken(): Promise<string> {
   if (fileToken && fileToken.expiresAt > Date.now()) return fileToken.value;
   if (!fileTokenRequest) {
@@ -514,6 +572,16 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
     // 截图原图按需保存，以控制本地空间；离线查看灯箱时仍优先给出已同步的缩略图。
     if (field === 'image' && !thumb) {
       const thumbnailKey = `${record.collectionName || 'screenshots'}:${record.id}:${filename}:${SCREENSHOT_THUMB_SIZE}`;
+      const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
+      if (thumbnailBlob) {
+        const localUrl = URL.createObjectURL(thumbnailBlob);
+        mediaObjectUrls.set(`${ownerId}:${mediaKey}`, localUrl);
+        return localUrl;
+      }
+    }
+    // 海报原图同样优先使用已同步的缩略图兜底，避免大图加载失败/缓慢时一片空白。
+    if (field === 'poster' && !thumb) {
+      const thumbnailKey = `${record.collectionName || 'movies'}:${record.id}:${filename}:${POSTER_THUMB_SIZE}`;
       const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
       if (thumbnailBlob) {
         const localUrl = URL.createObjectURL(thumbnailBlob);
@@ -932,6 +1000,18 @@ export const cloudApi = {
           console.warn('[cloud] Failed to create status diary after updating movie', error);
         }
       }
+      // 综艺 segments 变更 → 记录/合并 progress 日记（与本地行为一致）
+      if (
+        next.mediaType === '综艺' &&
+        next.progress?.segments &&
+        JSON.stringify(previous.progress?.segments) !== JSON.stringify(next.progress.segments)
+      ) {
+        try {
+          await upsertVarietyProgressDiary(id, next.progress.segments);
+        } catch (error) {
+          console.warn('[cloud] Failed to create variety progress diary after updating movie', error);
+        }
+      }
       return next;
     },
     delete: async (id: string): Promise<void> => {
@@ -975,10 +1055,13 @@ export const cloudApi = {
     getPosterUrl: async (id: string, thumb?: boolean): Promise<string | null> => fileUrl(await getMovieRecord(id), 'poster', thumb ? POSTER_THUMB_SIZE : undefined),
     exportExcel: async () => { throw new Error('云端数据导出将在下一版提供；当前服务器已执行每日备份。'); },
     listScreenshots: async (movieId: string): Promise<ScreenshotInfo[]> => (await getScreenshotsForMovie(movieId)).map((record) => ({ filename: record.id, createdAt: stringField(record, 'created') || undefined, episode: typeof record.episode === 'number' ? record.episode : undefined, hours: typeof record.hours === 'number' ? record.hours : undefined, minutes: typeof record.minutes === 'number' ? record.minutes : undefined, seconds: typeof record.seconds === 'number' ? record.seconds : undefined })),
-    addScreenshot: async (movieId: string, base64: string, ext: string): Promise<ScreenshotInfo[]> => {
-      const [header, content = ''] = base64.split(',', 2); const mime = header.match(/^data:([^;]+);base64$/)?.[1] || 'image/jpeg';
-      const bytes = Uint8Array.from(atob(content || base64), (char) => char.charCodeAt(0));
-      const form = new FormData(); form.append('owner', requireUserId()); form.append('movie', movieId); form.append('image', new File([bytes], `screenshot${ext.startsWith('.') ? ext : `.${ext}`}`, { type: mime }));
+    addScreenshot: async (movieId: string, base64: string, _ext: string): Promise<ScreenshotInfo[]> => {
+      // 上传前先在本地压缩大图，减少上传体积与服务器缩略图生成时间
+      const optimized = await compressScreenshotForUpload(base64);
+      const [header, content = ''] = optimized.split(',', 2); const mime = header.match(/^data:([^;]+);base64$/)?.[1] || 'image/jpeg';
+      const bytes = Uint8Array.from(atob(content || optimized), (char) => char.charCodeAt(0));
+      const compressedExt = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
+      const form = new FormData(); form.append('owner', requireUserId()); form.append('movie', movieId); form.append('image', new File([bytes], `screenshot${compressedExt}`, { type: mime }));
       const created = await cloudWrite(() => pocketbase.collection('screenshots').create<CloudRecord>(form));
       invalidateSnapshot();
       scheduleCloudSync();
@@ -986,6 +1069,19 @@ export const cloudApi = {
       updateOfflineSnapshot((snapshot) => ({ ...snapshot, screenshots: [...snapshot.screenshots, created] }));
       screenshotListCache.delete(movieId);
       allScreenshotsCache = null;
+      // 上传成功后立即预热新截图的缩略图：触发服务端生成并缓存到本地 IndexedDB，
+      // 让照片墙/详情页无需再等首次缩略图请求，秒开显示。
+      void (async () => {
+        try {
+          const ownerId = getCloudUser()?.id;
+          if (!ownerId) return;
+          const token = await getProtectedFileToken();
+          const remoteUrl = pocketbase.files.getURL({ ...created, collectionName: 'screenshots' }, created.id, { token, thumb: SCREENSHOT_THUMB_SIZE });
+          await cacheRemoteMedia(ownerId, `screenshots:${created.id}:${created.id}:${SCREENSHOT_THUMB_SIZE}`, remoteUrl);
+        } catch {
+          // 预热失败不影响上传结果；页面仍会按需加载缩略图。
+        }
+      })();
       return cloudApi.movie.listScreenshots(movieId);
     },
     deleteScreenshot: async (movieId: string, screenshotId: string): Promise<ScreenshotInfo[]> => {

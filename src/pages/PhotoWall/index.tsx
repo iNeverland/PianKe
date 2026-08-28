@@ -6,6 +6,7 @@ import Header from '@/components/layout/Header';
 import PosterThumb from '@/components/common/PosterThumb';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
+import ZoomableImage from '@/components/common/ZoomableImage';
 import type { MovieSummary, ScreenshotInfo } from '@shared/types/index';
 import AppIcon from '@/components/common/AppIcon';
 
@@ -181,10 +182,15 @@ function PhotoLightbox({ movieId, movieTitle, media, onClose, onPrevious, onNext
     setImageUrl(media.filename ? null : media.src || null);
     if (!media.filename && media.src) return;
 
-    const request = media.kind === 'poster'
-      ? api.movie.getPosterUrl(movieId)
-      : api.movie.getScreenshot(movieId, media.filename!);
-    request.then((url) => { if (active) setImageUrl(url); }).catch(() => { if (active) setImageUrl(null); });
+    if (media.kind === 'poster') {
+      // 海报分两阶段：先用缩略图（本地缓存秒开），原图就绪后再替换为高清图。
+      api.movie.getPosterUrl(movieId, true).then((url) => { if (active && url) setImageUrl(url); }).catch(() => {});
+      api.movie.getPosterUrl(movieId).then((url) => { if (active && url) setImageUrl(url); }).catch(() => { if (active) setImageUrl(null); });
+    } else {
+      api.movie.getScreenshot(movieId, media.filename!)
+        .then((url) => { if (active) setImageUrl(url); })
+        .catch(() => { if (active) setImageUrl(null); });
+    }
     return () => { active = false; };
   }, [media, movieId]);
 
@@ -207,7 +213,11 @@ function PhotoLightbox({ movieId, movieTitle, media, onClose, onPrevious, onNext
         <AppIcon name="chevronLeft" />
       </button>
       <div className="photo-wall-lightbox-content" onClick={(event) => event.stopPropagation()}>
-        {imageUrl ? <img src={imageUrl} alt={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}`} decoding="async" /> : <span>{media.kind === 'poster' ? '请上传海报' : '图片加载失败'}</span>}
+        {imageUrl ? (
+          <div className="photo-wall-lightbox-canvas">
+            <ZoomableImage src={imageUrl} alt={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}`} />
+          </div>
+        ) : <span>{media.kind === 'poster' ? '请上传海报' : '图片加载失败'}</span>}
         {media.kind === 'screenshot' && <p>{getScreenshotCaption(media)}</p>}
       </div>
       <button className="photo-wall-lightbox-nav next" onClick={(event) => { event.stopPropagation(); onNext(); }} disabled={!hasNext} aria-label="下一张">

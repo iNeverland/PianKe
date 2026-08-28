@@ -2043,27 +2043,31 @@ select.form-input {
   position: fixed; inset: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
   padding: 48px; background: rgba(0, 0, 0, 0.84);
 }
-.photo-wall-lightbox-content { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 100%; max-height: 100%; }
-.photo-wall-lightbox-content img { display: block; max-width: min(1200px, 100%); max-height: calc(100vh - 96px); object-fit: contain; }
+.photo-wall-lightbox-content { display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%; height: 100%; max-width: 100%; max-height: 100%; overflow: hidden; }
+.photo-wall-lightbox-content .photo-wall-lightbox-canvas { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .photo-wall-lightbox-content span { color: rgba(255, 255, 255, 0.72); font-size: 0.85rem; }
 .photo-wall-lightbox-content p { margin: 0; color: rgba(255, 255, 255, 0.78); font-size: 0.78rem; }
 .photo-wall-lightbox-close {
   position: absolute; top: 20px; right: 20px; width: 40px; height: 40px; padding: 0;
   display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%;
   color: #fff; background: rgba(255, 255, 255, 0.12); cursor: pointer; transition: background var(--transition);
+  z-index: 20;
 }
 .photo-wall-lightbox-close:hover { background: rgba(255, 255, 255, 0.22); }
-.photo-wall-lightbox-close svg { width: 20px; height: 20px; }
+.photo-wall-lightbox-close .app-icon-source,
+.photo-wall-lightbox-close svg { display: block; width: 20px; height: 20px; }
 .photo-wall-lightbox-nav {
   position: absolute; top: 50%; width: 48px; height: 48px; padding: 0; transform: translateY(-50%);
   display: flex; align-items: center; justify-content: center; border: none; border-radius: 50%;
   color: #fff; background: rgba(255, 255, 255, 0.12); cursor: pointer; transition: background var(--transition), opacity var(--transition);
+  z-index: 20;
 }
 .photo-wall-lightbox-nav:hover:not(:disabled) { background: rgba(255, 255, 255, 0.24); }
 .photo-wall-lightbox-nav:disabled { opacity: 0.18; cursor: default; }
 .photo-wall-lightbox-nav.previous { left: 24px; }
 .photo-wall-lightbox-nav.next { right: 24px; }
-.photo-wall-lightbox-nav svg { width: 24px; height: 24px; }
+.photo-wall-lightbox-nav .app-icon-source,
+.photo-wall-lightbox-nav svg { display: block; width: 24px; height: 24px; }
 
 @media (max-width: 720px) {
   .photo-wall-list { gap: 32px; }
