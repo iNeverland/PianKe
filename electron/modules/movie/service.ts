@@ -855,6 +855,76 @@ export async function updateScreenshotInfo(
   return result;
 }
 
+/** 截图缩略图目标尺寸与质量：照片墙/详情页在 HiDPI 屏上放大查看时仍需足够清晰。 */
+const SCREENSHOT_THUMB_WIDTH = 960;
+const SCREENSHOT_THUMB_HEIGHT = 540;
+const SCREENSHOT_THUMB_QUALITY = 90;
+
+// 会话内已确认"尺寸达标"的缩略图，避免每次请求都重复读取元数据。
+const verifiedScreenshotThumbs = new Set<string>();
+// 正在重建的缩略图（按路径），并发请求共享同一次重建结果。
+const regeneratingScreenshotThumbs = new Map<string, Promise<void>>();
+
+function getScreenshotThumbPath(screenshotsDir: string, filename: string): { thumbPath: string; ext: string } {
+  const ext = path.extname(filename).toLowerCase();
+  const baseName = path.basename(filename, ext);
+  return { thumbPath: path.join(screenshotsDir, `${baseName}_thumb${ext}`), ext };
+}
+
+function screenshotThumbMimeType(ext: string): string {
+  return ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+}
+
+/**
+ * 确保缩略图存在且达到目标分辨率。旧版本生成的 500x281 缩略图会在首次被查看时
+ * 从原图静默重建为 960x540，无需全库扫描迁移。
+ */
+async function ensureScreenshotThumbnail(screenshotsDir: string, filename: string): Promise<string | null> {
+  const { thumbPath } = getScreenshotThumbPath(screenshotsDir, filename);
+  const originalPath = path.join(screenshotsDir, filename);
+
+  // 会话内已确认尺寸达标的缩略图直接复用。
+  if (verifiedScreenshotThumbs.has(thumbPath)) return thumbPath;
+
+  if (fs.existsSync(thumbPath)) {
+    try {
+      const sharp = (await import('sharp')).default;
+      const meta = await sharp(thumbPath).metadata();
+      if ((meta.width ?? 0) >= SCREENSHOT_THUMB_WIDTH && (meta.height ?? 0) >= SCREENSHOT_THUMB_HEIGHT) {
+        verifiedScreenshotThumbs.add(thumbPath);
+        return thumbPath;
+      }
+    } catch {
+      // 元数据读取失败时按现状返回，不影响浏览。
+      return thumbPath;
+    }
+    // 旧分辨率缩略图：回落到下方重建流程。
+  }
+
+  const pending = regeneratingScreenshotThumbs.get(thumbPath);
+  if (pending) {
+    await pending.catch(() => {});
+    return fs.existsSync(thumbPath) ? thumbPath : null;
+  }
+  const job = (async () => {
+    const sharp = (await import('sharp')).default;
+    await sharp(originalPath)
+      .resize(SCREENSHOT_THUMB_WIDTH, SCREENSHOT_THUMB_HEIGHT, { fit: 'cover' })
+      .jpeg({ quality: SCREENSHOT_THUMB_QUALITY })
+      .toFile(thumbPath);
+    verifiedScreenshotThumbs.add(thumbPath);
+  })();
+  regeneratingScreenshotThumbs.set(thumbPath, job);
+  try {
+    await job;
+  } catch {
+    // 重建失败时退回旧缩略图（若存在）。
+  } finally {
+    regeneratingScreenshotThumbs.delete(thumbPath);
+  }
+  return fs.existsSync(thumbPath) ? thumbPath : null;
+}
+
 /** 添加截图（base64 → 文件 + 缩略图），返回更新后列表 */
 export async function addScreenshot(id: string, base64Data: string, ext: string): Promise<ScreenshotInfo[]> {
   const movieDir = getMovieDirById(id);
@@ -880,8 +950,8 @@ export async function addScreenshot(id: string, base64Data: string, ext: string)
     try {
       const sharp = (await import('sharp')).default;
       await sharp(buffer)
-        .resize(500, 281, { fit: 'cover' })
-        .jpeg({ quality: 85 })
+        .resize(SCREENSHOT_THUMB_WIDTH, SCREENSHOT_THUMB_HEIGHT, { fit: 'cover' })
+        .jpeg({ quality: SCREENSHOT_THUMB_QUALITY })
         .toFile(path.join(screenshotsDir, thumbFilename));
     } catch {
       fs.writeFileSync(path.join(screenshotsDir, thumbFilename), buffer);
@@ -936,17 +1006,18 @@ export function getScreenshotBase64(id: string, filename: string): string | null
 }
 
 /** 获取单张截图缩略图。供可见区域按需加载，避免列表一次传输全部 base64。 */
-export function getScreenshotThumbnailBase64(id: string, filename: string): string | null {
+export async function getScreenshotThumbnailBase64(id: string, filename: string): Promise<string | null> {
   assertSafeScreenshotFilename(filename);
   const movieDir = getMovieDirById(id);
   const screenshotsDir = getScreenshotsDir(movieDir);
-  const ext = path.extname(filename).toLowerCase();
-  const baseName = path.basename(filename, ext);
-  const thumbPath = path.join(screenshotsDir, `${baseName}_thumb${ext}`);
 
-  if (!fs.existsSync(thumbPath)) return null;
+  const originalPath = path.join(screenshotsDir, filename);
+  if (!fs.existsSync(originalPath)) return null;
 
-  const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+  const thumbPath = await ensureScreenshotThumbnail(screenshotsDir, filename);
+  if (!thumbPath) return null;
+
+  const { ext } = getScreenshotThumbPath(screenshotsDir, filename);
   const data = fs.readFileSync(thumbPath);
-  return `data:${mimeType};base64,${data.toString('base64')}`;
+  return `data:${screenshotThumbMimeType(ext)};base64,${data.toString('base64')}`;
 }

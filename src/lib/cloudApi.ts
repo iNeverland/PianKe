@@ -23,8 +23,9 @@ interface Snapshot {
 const SNAPSHOT_TTL_MS = 60_000;
 const FILE_TOKEN_TTL_MS = 4 * 60_000;
 const SCREENSHOT_CACHE_TTL_MS = 60_000;
-const POSTER_THUMB_SIZE = '300x450';
-const SCREENSHOT_THUMB_SIZE = '500x281';
+// 云端缩略图尺寸：照片墙/卡片在 HiDPI 屏上放大查看时仍需足够清晰。
+export const POSTER_THUMB_SIZE = '600x900';
+export const SCREENSHOT_THUMB_SIZE = '960x540';
 const MEDIA_WARM_CONCURRENCY = 3;
 
 // 首页、统计与日记会在同一时间读取相同的基础数据。缓存「进行中的请求」可以

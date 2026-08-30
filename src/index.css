@@ -3369,6 +3369,29 @@ button:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
 }
+/* 仅图标按钮（侧边栏、窗口控制除外）：悬浮时去掉橙色底，只保留图标颜色反馈。 */
+button:has(> :is(.app-icon, svg):only-child):hover:not(:disabled):not(.nav-item):not(.sidebar-profile-entry):not(.titlebar-btn) {
+  background: transparent;
+  color: var(--accent);
+  border-color: currentColor;
+  filter: none;
+}
+/* 窗口控制按钮恢复原本的悬浮样式（不显示橙色）。 */
+.titlebar-btn:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-color: transparent;
+  opacity: 1;
+}
+/* 截图缩略图删除角标：悬浮保持黑底白字，不显示橙色。 */
+.screenshot-delete-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-color: transparent;
+}
+
+/* 照片墙首字母索引：悬停/激活只变颜色与缩放，不显示橙色底。 */
+.photo-wall-index button:hover { background: transparent; border-color: transparent; }
 button.nav-item.active:hover,
 button.sort-item.active:hover,
 button.filter-chip.active:hover,

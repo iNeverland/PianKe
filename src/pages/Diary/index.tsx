@@ -346,7 +346,7 @@ export default function Diary() {
                               alt=""
                               className="w-10 h-[60px] rounded object-cover flex-shrink-0"
                             />
-                            <div className="flex-1 min-w-0 py-0.5">
+                            <div className="flex-1 min-w-0 py-0.5 pr-14">
                               <p className="text-text-primary text-sm font-medium truncate leading-snug">
                                 {item.movieTitle}
                                 {item.watchTime && <span className="text-text-muted font-normal ml-1.5 text-xs">{item.watchTime}</span>}
@@ -361,7 +361,7 @@ export default function Diary() {
                               e.stopPropagation();
                               setDeletingDiary({ movieId: item.movieId, entryId: item.id, movieTitle: item.movieTitle });
                             }}
-                            className="absolute top-1/2 -translate-y-1/2 right-4 !text-[#e53e3e] text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent"
+                            className="absolute top-1/2 -translate-y-1/2 right-4 !text-[#e53e3e] text-xs border cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 rounded bg-card shadow-sm border-border"
                           >删除</button>
                         </div>
                       ))}

@@ -157,18 +157,16 @@ export default function MovieDetail() {
     return () => window.removeEventListener('screenshot:capture', handleCapture);
   }, [id]);
 
-  // 裁剪窗口不接触云端凭据；由当前已登录的渲染进程将图片上传到 PocketBase。
+  // 截图保存动作由 App 级监听统一处理（详情页之外也能保存）；这里只接收
+  // screenshot:saved 事件刷新本页截图列表，避免保存逻辑依赖页面是否挂载。
   useEffect(() => {
-    const unsub = window.electronAPI?.onScreenshotCropped?.((movieId, dataUrl) => {
-      if (movieId !== id) return;
-      void api.movie.addScreenshot(movieId, dataUrl, '.png')
-        .then((updated) => {
-          setScreenshots(updated);
-          window.electronAPI?.showScreenToast?.('截图已保存，并已同步到云端');
-        })
-        .catch((err: any) => window.electronAPI?.showScreenToast?.(err?.message || '截图上传失败'));
-    });
-    return () => { unsub?.(); };
+    const handleSaved = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { movieId: string; updated: ScreenshotInfo[] } | undefined;
+      if (!detail || detail.movieId !== id) return;
+      setScreenshots(detail.updated);
+    };
+    window.addEventListener('screenshot:saved', handleSaved);
+    return () => window.removeEventListener('screenshot:saved', handleSaved);
   }, [id]);
 
   useEffect(() => {
@@ -716,7 +714,7 @@ export default function MovieDetail() {
                 />
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDeleteScreenshot(shot.filename); }}
-                  className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity border-none cursor-pointer"
+                  className="screenshot-delete-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity border-none cursor-pointer"
                   title="删除截图" aria-label="删除截图"
                 >×</button>
               </div>

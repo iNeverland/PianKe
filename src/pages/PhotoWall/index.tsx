@@ -280,13 +280,17 @@ export default function PhotoWall() {
     const refreshWhenVisible = () => {
       if (document.visibilityState === 'visible') refreshWhenFocused();
     };
+    // 截图保存完成（可能发生在照片墙页面之外）后立即刷新，不依赖窗口焦点时序。
+    const handleScreenshotSaved = () => { void loadPhotoWall(); };
     window.addEventListener('focus', refreshWhenFocused);
     document.addEventListener('visibilitychange', refreshWhenVisible);
+    window.addEventListener('screenshot:saved', handleScreenshotSaved);
 
     return () => {
       active = false;
       window.removeEventListener('focus', refreshWhenFocused);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
+      window.removeEventListener('screenshot:saved', handleScreenshotSaved);
     };
   }, [previewMode]);
 

@@ -7,7 +7,7 @@ import UpdateDialog from './components/common/UpdateDialog';
 import { getShortcutConfig, toAccelerator } from './hooks/useScreenshotShortcut';
 import CloudAuth from './pages/CloudAuth';
 import { getCloudUser, subscribeCloudAuth, type CloudUser } from './lib/pocketbase';
-import { hydrateOfflineCloudCache } from './lib/cloudApi';
+import { hydrateOfflineCloudCache, POSTER_THUMB_SIZE } from './lib/cloudApi';
 import { getOfflineMedia } from './lib/offlineCache';
 import api from './lib/api';
 import type { MovieSummary, ScreenshotMoviePickerItem } from '@shared/types/index';
@@ -48,7 +48,7 @@ async function getPickerPosterDataUrl(movie: MovieSummary): Promise<string | und
   // 登录态限制。key 与 cloudApi 的缩略图预热逻辑保持一致。
   const ownerId = getCloudUser()?.id;
   if (ownerId) {
-    const mediaKey = `movies:${movie.id}:${filename}:300x450`;
+    const mediaKey = `movies:${movie.id}:${filename}:${POSTER_THUMB_SIZE}`;
     const cachedBlob = await getOfflineMedia(ownerId, mediaKey).catch(() => null);
     if (cachedBlob) return blobToDataUrl(cachedBlob);
   }
@@ -172,6 +172,23 @@ export default function App() {
             window.electronAPI?.showScreenToast?.(err?.message || '截图失败');
           });
       }
+    });
+
+    return () => { unsub?.(); };
+  }, [libraryLoaded]);
+
+  // 裁剪完成后保存截图到所选影片（无论当前在哪个页面都要生效，不依赖详情页挂载）。
+  // 保存动作统一放在 App 级监听，页面只通过 screenshot:saved 事件刷新自己的截图列表。
+  useEffect(() => {
+    if (!libraryLoaded) return;
+
+    const unsub = window.electronAPI?.onScreenshotCropped?.((movieId, dataUrl) => {
+      void api.movie.addScreenshot(movieId, dataUrl, '.png')
+        .then((updated) => {
+          window.dispatchEvent(new CustomEvent('screenshot:saved', { detail: { movieId, updated } }));
+          window.electronAPI?.showScreenToast?.('截图已保存');
+        })
+        .catch((err: any) => window.electronAPI?.showScreenToast?.(err?.message || '截图保存失败'));
     });
 
     return () => { unsub?.(); };
