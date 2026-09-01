@@ -1,3 +1,5 @@
+import { platform } from '@/platform';
+
 export interface ShortcutConfig {
   ctrl: boolean;
   shift: boolean;
@@ -52,7 +54,7 @@ export function getShortcutKey(event: Pick<KeyboardEvent, 'code'>): string | nul
 
 /** 将 ShortcutConfig 序列化为 Electron accelerator 字符串，如 "Ctrl+Shift+S" */
 export function toAccelerator(config: ShortcutConfig): string {
-  const isMacOS = window.electronAPI?.platform === 'darwin';
+  const isMacOS = platform.platform === 'darwin';
   const mods: string[] = [];
   if (config.ctrl) mods.push('Ctrl');
   if (config.shift) mods.push('Shift');
@@ -64,13 +66,13 @@ export function toAccelerator(config: ShortcutConfig): string {
 
 /** 返回符合当前系统习惯的快捷键显示文本。 */
 export function toDisplayText(config: ShortcutConfig): string {
-  const platform = window.electronAPI?.platform;
-  const isMacOS = platform === 'darwin';
+  const platformName = platform.platform;
+  const isMacOS = platformName === 'darwin';
   const parts: string[] = [];
   if (config.ctrl) parts.push('Ctrl');
   if (config.shift) parts.push('Shift');
   if (config.alt) parts.push(isMacOS ? '⌥ Option' : 'Alt');
-  if (config.meta) parts.push(isMacOS ? '⌘ Command' : platform === 'win32' ? 'Win' : 'Meta');
+  if (config.meta) parts.push(isMacOS ? '⌘ Command' : platformName === 'win32' ? 'Win' : 'Meta');
   parts.push(config.key.toUpperCase());
   return parts.join(' + ');
 }

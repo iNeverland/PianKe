@@ -10,6 +10,7 @@ import { getCloudUser, subscribeCloudAuth, type CloudUser } from './lib/pocketba
 import { hydrateOfflineCloudCache, POSTER_THUMB_SIZE } from './lib/cloudApi';
 import { getOfflineMedia } from './lib/offlineCache';
 import api from './lib/api';
+import { platform } from '@/platform';
 import type { MovieSummary, ScreenshotMoviePickerItem } from '@shared/types/index';
 
 const Home = lazy(() => import('./pages/Home'));
@@ -99,9 +100,7 @@ export default function App() {
     } else {
       document.documentElement.removeAttribute('data-theme');
     }
-    if (window.electronAPI?.setTheme) {
-      window.electronAPI.setTheme((theme === 'dark' || theme === 'light') ? theme : 'system');
-    }
+    platform.setTheme((theme === 'dark' || theme === 'light') ? theme : 'system');
   }, []);
 
   // 注册截图全局快捷键到主进程
@@ -110,13 +109,11 @@ export default function App() {
 
     const config = getShortcutConfig();
     const accelerator = toAccelerator(config);
-    if (window.electronAPI?.registerShortcut) {
-      window.electronAPI.registerShortcut(accelerator).then((ok) => {
-        if (!ok) {
-          console.warn('[screenshot] shortcut registration failed:', accelerator);
-        }
-      });
-    }
+    platform.registerShortcut(accelerator).then((ok) => {
+      if (!ok) {
+        console.warn('[screenshot] shortcut registration failed:', accelerator);
+      }
+    });
   }, [libraryLoaded]);
 
   // 全局键盘快捷键
@@ -149,7 +146,7 @@ export default function App() {
   useEffect(() => {
     if (!libraryLoaded) return;
 
-    const unsub = window.electronAPI?.onScreenshotTrigger?.(() => {
+    const unsub = platform.onScreenshotTrigger(() => {
       const hash = window.location.hash;
       const match = hash.match(/^#\/movie\/(.+)$/);
       if (match) {
@@ -157,19 +154,19 @@ export default function App() {
         const movieId = match[1];
         window.dispatchEvent(new CustomEvent('screenshot:capture', { detail: { movieId } }));
       } else {
-        window.electronAPI.getPrimaryScreenSnapshot()
+        platform.getPrimaryScreenSnapshot()
           .then((dataUrl) => {
             if (!dataUrl) {
-              window.electronAPI?.showScreenToast?.('未检测到可捕获的屏幕');
+              platform.showScreenToast('未检测到可捕获的屏幕');
               return;
             }
             // 选择器使用当前数据源，并将海报转为独立窗口也可显示的 data URL。
             return api.movie.list()
               .then(toScreenshotPickerMovies)
-              .then((movies) => window.electronAPI.startCrop(null, dataUrl, movies));
+              .then((movies) => platform.startCrop(null, dataUrl, movies));
           })
           .catch((err) => {
-            window.electronAPI?.showScreenToast?.(err?.message || '截图失败');
+            platform.showScreenToast(err?.message || '截图失败');
           });
       }
     });
@@ -182,13 +179,13 @@ export default function App() {
   useEffect(() => {
     if (!libraryLoaded) return;
 
-    const unsub = window.electronAPI?.onScreenshotCropped?.((movieId, dataUrl) => {
+    const unsub = platform.onScreenshotCropped((movieId, dataUrl) => {
       void api.movie.addScreenshot(movieId, dataUrl, '.png')
         .then((updated) => {
           window.dispatchEvent(new CustomEvent('screenshot:saved', { detail: { movieId, updated } }));
-          window.electronAPI?.showScreenToast?.('截图已保存');
+          platform.showScreenToast('截图已保存');
         })
-        .catch((err: any) => window.electronAPI?.showScreenToast?.(err?.message || '截图保存失败'));
+        .catch((err: any) => platform.showScreenToast(err?.message || '截图保存失败'));
     });
 
     return () => { unsub?.(); };

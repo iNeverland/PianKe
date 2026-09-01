@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { platform } from '@/platform';
 
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -12,6 +13,9 @@ export default function TitleBar() {
     win.isMaximized?.().then(setIsMaximized);
     win.onMaximizeChange?.((v: boolean) => setIsMaximized(v));
   }, [isMac]);
+
+  // 移动端（Capacitor/Web）没有窗口边框与窗口控制按钮，整条标题栏不渲染。
+  if (platform.name !== 'electron') return null;
 
   const handleMinimize = () => api.window?.minimize?.();
   const handleMaximize = () => api.window?.maximize?.();

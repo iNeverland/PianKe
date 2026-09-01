@@ -21,8 +21,9 @@ PianKe 是一款用于收藏影视、记录观看过程和沉淀观后感的**�
 ```text
 PianKe/
 ├── electron/                  # Electron 主进程（Node 环境）
-├── src/                       # React 渲染进程
+├── src/                       # React 渲染进程（含 platform/ 平台抽象层）
 ├── shared/                    # 主/渲染进程共享的类型、校验与工具
+├── android/                   # Capacitor Android 工程（Android Studio 打开）
 ├── server/                    # 服务端：PocketBase 迁移/hook + TMDB 代理
 ├── docs/                      # 架构与发布文档
 ├── build/                     # 安装器与签名配置
@@ -32,9 +33,10 @@ PianKe/
 ├── dist-electron/             # 主进程构建产物（构建时生成）
 ├── node_modules/              # 依赖（不提交）
 │
-├── package.json               # 依赖与脚本（dev/build/electron:build 等）
+├── package.json               # 依赖与脚本（dev/build/package/electron:build 等）
 ├── electron-builder.yml       # 打包配置
 ├── vite.config.ts             # Vite + vite-plugin-electron 配置
+├── capacitor.config.ts        # Capacitor 配置（appId/webDir，Android 端）
 ├── tsconfig.json              # TypeScript 配置
 ├── tailwind.config.js         # Tailwind 主题配置
 ├── postcss.config.js
@@ -105,8 +107,13 @@ src/
 │   └── movie/                 # MovieCard、MovieGrid、FinishWatchingModal
 ├── hooks/
 │   └── useScreenshotShortcut.ts  # 截图快捷键配置读取与转换
+├── platform/                  # 平台抽象层：统一原生能力接口
+│   ├── index.ts               # 按运行环境选择实现，导出 platform 实例
+│   ├── types.ts               # Platform 接口（窗口/更新/截图/TMDB/主题）
+│   ├── electron.ts            # Electron 实现（转发 window.electronAPI）
+│   └── capacitor.ts           # Capacitor/Android 占位实现
 ├── lib/
-│   ├── api.ts                 # ⭐ 代理：登录后业务调用自动路由到 cloudApi，其余走 Electron IPC
+│   ├── api.ts                 # ⭐ 代理：登录后业务调用自动路由到 cloudApi，原生能力走平台抽象层
 │   ├── cloudApi.ts            # ⭐ 云端业务核心（约 1000 行）：CRUD、快照缓存、单飞去重、离线恢复
 │   ├── pocketbase.ts          # ⭐ 认证、当前用户、头像 token/缓存、会话失效处理
 │   ├── offlineCache.ts        # IndexedDB：数据快照与媒体（海报/截图/头像）缓存
@@ -193,7 +200,8 @@ resources/
 ```text
 React 页面与组件 (src/)
   → lib/api.ts
-  → Electron preload bridge (window.electronAPI) / 云端直接访问 (cloudApi → PocketBase)
+  → 平台抽象层 (src/platform/) → Electron preload bridge (window.electronAPI) / Capacitor
+      业务数据：云端直接访问 (cloudApi → PocketBase)
   → IPC handler (electron/modules/<feature>/handler.ts)
   → 主进程 service (electron/modules/<feature>/service.ts)
   → 云端 PocketBase / 本地离线缓存 (IndexedDB)
@@ -256,11 +264,17 @@ React 页面与组件 (src/)
 | `npm run typecheck` | 执行 TypeScript 类型检查 |
 | `npm run check` | 类型检查并构建前端/主进程代码 |
 | `npm run build` | 构建应用代码，不生成安装包 |
+| `npm run package` | 别名，等价于 `npm run electron:build` |
 | `npm run electron:build` | 构建当前系统的安装包 |
 | `npm run electron:build:win` | 构建 Windows NSIS 安装包 |
 | `npm run electron:build:win:signed` | 使用 Windows 代码签名配置构建安装包 |
+| `npm run android:sync` | 构建前端并同步到 Android 工程（build + cap sync） |
+| `npm run android:open` | 用 Android Studio 打开 Android 工程 |
+| `npm run android:run` | 构建并运行到已连接的 Android 设备/模拟器 |
 
 ## 7. 版本状态
 
-- 当前版本：v2.0.3
+- 当前版本：v2.0.4
 - 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源，本地库及其迁移能力已移除。
+- 跨平台改造（第一阶段）：新增 `src/platform/` 平台抽象层，收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `platform` 访问，业务数据仍由 `cloudApi` 直连 PocketBase，为后续 Capacitor Android 端复用同一套 React UI 打基础。
+- 跨平台改造（第二阶段）：安装 Capacitor 8（@capacitor/core + @capacitor/cli + @capacitor/android），新增 `capacitor.config.ts`（appId=com.pianke.app、webDir=dist）与 `android/` 工程；Electron 构建流程保持不变，`npm run build` 产物可直接被 `npx cap sync android` 复用。

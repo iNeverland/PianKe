@@ -11,13 +11,18 @@
     "check": "npm run typecheck && vite build",
     "preview": "vite preview",
     "electron:dev": "vite",
+    "package": "npm run electron:build",
     "electron:build": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" && vite build && electron-builder",
     "electron:build:win": "node -e \"require('fs').rmSync('release',{recursive:true,force:true})\" 2>nul & vite build && electron-builder --win nsis",
     "electron:build:win:signed": "vite build && electron-builder --win nsis --config build/win-signed.yml",
     "electron:publish": "npm run build && electron-builder --publish always",
-    "electron:publish:win": "npm run build && electron-builder --win nsis --publish always"
+    "electron:publish:win": "npm run build && electron-builder --win nsis --publish always",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:run": "npx cap run android"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.1",
     "@fontsource-variable/geist": "^5.3.0",
     "electron-updater": "^6.8.9",
     "pocketbase": "^0.27.3",
@@ -25,6 +30,9 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/uuid": "^10.0.0",

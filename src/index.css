@@ -3500,3 +3500,91 @@ button.titlebar-btn-close:hover {
 .quick-action-btn:focus-visible { outline-offset: 2px; }
 @media (max-width: 900px) { .main-content { padding: 32px 36px; } }
 @media (max-width: 640px) { .main-content { padding: 24px 20px; } .app-header { gap: 12px; align-items: flex-start; } }
+
+/* ══════════════════════════════════════════╗
+   ══  MOBILE LAYOUT (Capacitor / Web)      ══
+   ╚══════════════════════════════════════════ */
+
+/* 移动端：应用整体避开顶部状态栏/刘海安全区 */
+.platform-mobile .app-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 移动端：内容区在上、底部导航在下 */
+.platform-mobile .app-body {
+  flex-direction: column;
+}
+
+.platform-mobile .main-content {
+  order: 1;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: 16px 16px 16px;
+}
+
+/* 移动端：侧边栏转为底部导航条，并避开底部手势条安全区 */
+.platform-mobile .sidebar {
+  order: 2;
+  width: 100%;
+  min-width: 100%;
+  height: auto;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  transform: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.platform-mobile .sidebar::before {
+  display: none;
+}
+
+.platform-mobile .sidebar-capsule {
+  width: 100%;
+  max-width: 560px;
+  flex-direction: row;
+  justify-content: space-around;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 28px;
+}
+
+.platform-mobile .sidebar-profile-entry {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+.platform-mobile .sidebar-profile-entry img {
+  width: 34px;
+  height: 34px;
+}
+
+.platform-mobile .sidebar-divider {
+  width: 1px;
+  height: 26px;
+  margin: 0 2px;
+  flex: 0 0 auto;
+}
+
+.platform-mobile .nav-item {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+}
+
+/* 移动端无 hover，隐藏桌面端左侧 tooltip */
+.platform-mobile .nav-tooltip {
+  display: none;
+}
+
+/* 移动端：Toast 避开状态栏 */
+.platform-mobile .toast {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: 16px;
+}
+
+/* 移动端：新建/编辑表单由双栏改为单栏 */
+.platform-mobile .form-layout {
+  grid-template-columns: 1fr;
+  gap: 24px;
+}

@@ -21,3 +21,6 @@ Thumbs.db
 .env
 .env.*
 .vercel/
+
+# IDE local config
+.idea/

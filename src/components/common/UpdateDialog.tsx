@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { AppUpdateState } from '@shared/types/index';
+import { platform } from '@/platform';
 import { showToast } from './Toast';
 import Modal from './Modal';
 import AppIcon from './AppIcon';
@@ -29,7 +30,7 @@ export default function UpdateDialog() {
   const [startingDownload, setStartingDownload] = useState(false);
 
   useEffect(() => {
-    const updater = window.electronAPI?.updater;
+    const updater = platform.updater;
     if (!updater) return;
 
     const receiveState = (nextState: AppUpdateState) => {
@@ -50,7 +51,7 @@ export default function UpdateDialog() {
     setStartingDownload(true);
 
     try {
-      const started = await window.electronAPI.updater.download();
+      const started = await platform.updater.download();
       if (!started) {
         setStartingDownload(false);
         showToast('更新下载未能开始，请稍后重试');

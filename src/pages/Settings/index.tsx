@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
+import { platform } from '@/platform';
 import { showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
@@ -20,7 +21,7 @@ export default function Settings() {
   const previousShortcutRef = useRef<ShortcutConfig | null>(null);
 
   useEffect(() => {
-    api.updater.getState().then((state) => setAppVersion(state.currentVersion)).catch(() => {});
+    platform.updater.getState().then((state) => setAppVersion(state.currentVersion)).catch(() => {});
   }, []);
 
   // 按键捕获模式：监听下一次有效按键组合
@@ -30,8 +31,8 @@ export default function Settings() {
     const restorePreviousShortcut = () => {
       const previous = previousShortcutRef.current;
       previousShortcutRef.current = null;
-      if (previous && window.electronAPI?.registerShortcut) {
-        void window.electronAPI.registerShortcut(toAccelerator(previous));
+      if (previous && platform.name === 'electron') {
+        void platform.registerShortcut(toAccelerator(previous));
       }
     };
 
@@ -76,8 +77,8 @@ export default function Settings() {
       }
 
       // 注册到主进程。旧快捷键已注销，防止本次按键直接触发截图。
-      if (window.electronAPI?.registerShortcut) {
-        void window.electronAPI.registerShortcut(accel).then((ok) => {
+      if (platform.name === 'electron') {
+        void platform.registerShortcut(accel).then((ok) => {
           if (!ok) {
             showToast('快捷键注册失败，可能被系统占用，请更换');
             restorePreviousShortcut();
@@ -90,6 +91,7 @@ export default function Settings() {
           setCapturing(false);
         });
       } else {
+        // 非桌面端没有全局快捷键，仅保存本地配置。
         previousShortcutRef.current = null;
         saveShortcutConfig(newConfig);
         setScreenshotShortcut(newConfig);
@@ -108,7 +110,7 @@ export default function Settings() {
     if (capturing) return;
     previousShortcutRef.current = screenshotShortcut;
     try {
-      await window.electronAPI?.unregisterShortcut?.();
+      await platform.unregisterShortcut();
       setCapturing(true);
     } catch {
       previousShortcutRef.current = null;
@@ -128,10 +130,8 @@ export default function Settings() {
       document.documentElement.removeAttribute('data-theme');
     }
 
-    // 同步 Electron 原生主题
-    if (window.electronAPI?.setTheme) {
-      window.electronAPI.setTheme(mode);
-    }
+    // 同步平台原生主题（Electron 为 nativeTheme，Android 为 no-op）
+    platform.setTheme(mode);
   }
 
   async function handleExportExcel() {
@@ -239,8 +239,8 @@ export default function Settings() {
                   onClick={() => {
                     const def = getDefaultConfig();
                     const accel = toAccelerator(def);
-                    if (window.electronAPI?.registerShortcut) {
-                      window.electronAPI.registerShortcut(accel).then((ok) => {
+                    if (platform.name === 'electron') {
+                      platform.registerShortcut(accel).then((ok) => {
                         if (ok) {
                           saveShortcutConfig(def);
                           setScreenshotShortcut(def);

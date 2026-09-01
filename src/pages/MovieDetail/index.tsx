@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
+import { platform } from '@/platform';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
 import type { MovieMetadata, DiaryEntry, WatchRecord, ScreenshotInfo } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
@@ -131,7 +132,7 @@ export default function MovieDetail() {
     if (!id) return;
 
     const captureScreenSnapshot = async (): Promise<string | null> => {
-      return window.electronAPI.getPrimaryScreenSnapshot();
+      return platform.getPrimaryScreenSnapshot();
     };
 
     const handleCapture = async (e: Event) => {
@@ -141,15 +142,15 @@ export default function MovieDetail() {
       try {
         const dataUrl = await captureScreenSnapshot();
         if (!dataUrl) {
-          window.electronAPI?.showScreenToast?.('未检测到可捕获的屏幕');
+          platform.showScreenToast('未检测到可捕获的屏幕');
           return;
         }
 
         // 打开桌面裁剪窗口（普通窗口，不用 fullscreen/transparent）
-        await window.electronAPI.startCrop(id, dataUrl);
+        await platform.startCrop(id, dataUrl);
       } catch (err: any) {
         console.error('[screenshot] capture failed:', err);
-        window.electronAPI?.showScreenToast?.(err?.message || '截图失败');
+        platform.showScreenToast(err?.message || '截图失败');
       }
     };
 
