@@ -24,3 +24,8 @@ Thumbs.db
 
 # IDE local config
 .idea/
+
+# Android build caches (redirected into workspace for sandboxed builds)
+.gradle-home/
+.android-sdk/
+.android-home/
