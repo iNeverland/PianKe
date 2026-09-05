@@ -274,7 +274,7 @@ React 页面与组件 (src/)
 
 ## 7. 版本状态
 
-- 当前版本：v2.0.4
+- 当前版本：v2.0.5
 - 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源，本地库及其迁移能力已移除。
 - 跨平台改造（第一阶段）：新增 `src/platform/` 平台抽象层，收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `platform` 访问，业务数据仍由 `cloudApi` 直连 PocketBase，为后续 Capacitor Android 端复用同一套 React UI 打基础。
 - 跨平台改造（第二阶段）：安装 Capacitor 8（@capacitor/core + @capacitor/cli + @capacitor/android），新增 `capacitor.config.ts`（appId=com.pianke.app、webDir=dist）与 `android/` 工程；Electron 构建流程保持不变，`npm run build` 产物可直接被 `npx cap sync android` 复用。

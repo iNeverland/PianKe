@@ -487,10 +487,15 @@ async function createSystemDiary(movieId: string, kind: 'progress' | 'status', r
  * 综艺 segments 变更 → 记录/合并 progress 日记（10 分钟内合并）。
  * 与本地 updateMovie 行为一致：最近 10 分钟内已有的 progress 日记被更新，
  * 否则新建一条，避免频繁编辑分段标签产生冗余记录。
+ *
+ * 只把「本次最新添加」的期数写进 review，避免期数很多时日记把整个历史分段列表
+ * 累积显示出来（只显示最新添加的分段）。
  */
-async function upsertVarietyProgressDiary(movieId: string, segments: string[]): Promise<void> {
+async function upsertVarietyProgressDiary(movieId: string, segments: string[], previousSegments?: string[]): Promise<void> {
   const filled = segments.filter((s) => s.trim());
-  const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
+  const prevSet = new Set((previousSegments || []).filter((s) => s.trim()));
+  const added = filled.filter((s) => !prevSet.has(s));
+  const review = added.length > 0 ? added.join(' · ') : (filled.length > 0 ? filled.join(' · ') : '未标注观看进度');
   const now = new Date();
   const watchTime = getLocalTimeStr();
   const TEN_MINUTES = 10 * 60 * 1000;
@@ -870,6 +875,78 @@ function screenshotsToMap(records: CloudRecord[]): Map<string, ScreenshotInfo[]>
   return grouped;
 }
 
+/**
+ * 一次性迁移：把历史「累积全量分段」的综艺进度日记改写为只保留相对上一条新增的分段，
+ * 使云端已存在的日记也满足“只显示最新添加的期数”。幂等：只有计算出的新增分段与当前
+ * review 不同才写回；写完后由 localStorage 按账号标记跳过，避免每次登录重复扫描。
+ */
+export async function migrateVarietyDiaryReviews(): Promise<void> {
+  const ownerId = getCloudUser()?.id;
+  if (!ownerId) return;
+  const flagKey = `pianke.diaryReviewMigrated.v1.${ownerId}`;
+  try {
+    if (localStorage.getItem(flagKey) === '1') return;
+  } catch {
+    /* localStorage 不可用时每次都跑，操作幂等 */
+  }
+
+  let snapshot: Snapshot;
+  try {
+    snapshot = await loadSnapshot();
+  } catch {
+    return;
+  }
+
+  const reviewMap = new Map<string, string>();
+  for (const movie of snapshot.movies) {
+    if (stringField(movie, 'mediaType') !== '综艺') continue;
+    const movieId = stringField(movie, 'id');
+    const ordered = snapshot.diaries
+      .filter((entry) => stringField(entry, 'movie') === movieId)
+      .sort((a, b) => `${stringField(a, 'watchDate')}${stringField(a, 'watchTime')}`.localeCompare(`${stringField(b, 'watchDate')}${stringField(b, 'watchTime')}`));
+    const seen = new Set<string>();
+    for (const entry of ordered) {
+      if (stringField(entry, 'kind') !== 'progress') continue;
+      const storedReview = stringField(entry, 'review');
+      if (!storedReview || storedReview === '未标注观看进度') continue;
+      const segs = storedReview.split(/[·.、，,]/).map((s) => s.trim()).filter(Boolean);
+      const added = segs.filter((s) => !seen.has(s));
+      segs.forEach((s) => seen.add(s));
+      const delta = added.length > 0 ? added.join(' · ') : storedReview;
+      if (delta !== storedReview) reviewMap.set(entry.id, delta);
+    }
+  }
+
+  let updatedCount = 0;
+  if (reviewMap.size > 0) {
+    for (const [id, review] of reviewMap) {
+      try {
+        await cloudWrite(() => pocketbase.collection('diary_entries').update<CloudDiaryRecord>(id, { review }));
+        updatedCount++;
+      } catch (error) {
+        console.warn('[cloud] Failed to migrate variety diary review', id, error);
+      }
+    }
+    if (updatedCount > 0) {
+      invalidateSnapshot();
+      scheduleCloudSync();
+      updateOfflineSnapshot((snapshot) => ({
+        ...snapshot,
+        diaries: snapshot.diaries.map((entry) => (reviewMap.has(entry.id) ? { ...entry, review: reviewMap.get(entry.id) } : entry)),
+      }));
+    }
+  }
+
+  // 全部写入成功（或本就没有需要改写的历史）后才标记完成；部分失败下次登录会重试。
+  if (reviewMap.size === 0 || updatedCount === reviewMap.size) {
+    try {
+      localStorage.setItem(flagKey, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /** 应用登录后调用：预先恢复本地快照，并让云端同步在后台运行。 */
 export async function hydrateOfflineCloudCache(): Promise<void> {
   const ownerId = getCloudUser()?.id;
@@ -877,6 +954,8 @@ export async function hydrateOfflineCloudCache(): Promise<void> {
   void requestPersistentOfflineStorage();
   await restoreOfflineSnapshot(ownerId);
   void fetchRemoteSnapshot(ownerId).catch(() => {});
+  // 后台一次性改写历史综艺日记的 review，让它「对比上一条只显示新增的分段」。
+  void migrateVarietyDiaryReviews();
 }
 
 function splitCountries(country: string): string[] {
@@ -890,6 +969,28 @@ function ratingBucket(rating: number): number | null {
 
 function sortByMomentDesc<T extends { watchDate: string; watchTime?: string }>(entries: T[]): T[] {
   return [...entries].sort((a, b) => `${b.watchDate}${b.watchTime || ''}`.localeCompare(`${a.watchDate}${a.watchTime || ''}`));
+}
+
+/**
+ * 综艺进度日记的 review 里保存的是当次「已完成的分段列表」快照。期数很多时，列表会
+ * 越来越长，导致日记页把历史全部期数都显示出来。这里按观看时间顺序做差分：
+ * 每条只保留相对前一条「最新添加」的分段，实现“只显示最新添加的期数”的效果，
+ * 并且对云端早已累积的旧记录同样生效。
+ */
+function varietyProgressReviews(entries: DiaryEntry[], mediaType: string): Map<string, string> {
+  const display = new Map<string, string>();
+  if (mediaType !== '综艺') return display;
+  const sorted = [...entries].sort((a, b) => `${a.watchDate}${a.watchTime || ''}`.localeCompare(`${b.watchDate}${b.watchTime || ''}`));
+  const seen = new Set<string>();
+  for (const entry of sorted) {
+    if (entry.kind !== 'progress' || !entry.review || entry.review === '未标注观看进度') continue;
+    // 兼容历史数据里用「.」或「·」等分隔的分段列表。
+    const segs = entry.review.split(/[·.、，,]/).map((s) => s.trim()).filter(Boolean);
+    const added = segs.filter((seg) => !seen.has(seg));
+    segs.forEach((seg) => seen.add(seg));
+    display.set(entry.id, added.length > 0 ? added.join(' · ') : entry.review);
+  }
+  return display;
 }
 
 async function buildDashboard(): Promise<StatsDashboard> {
@@ -1008,7 +1109,7 @@ export const cloudApi = {
         JSON.stringify(previous.progress?.segments) !== JSON.stringify(next.progress.segments)
       ) {
         try {
-          await upsertVarietyProgressDiary(id, next.progress.segments);
+          await upsertVarietyProgressDiary(id, next.progress.segments, previous.progress?.segments);
         } catch (error) {
           console.warn('[cloud] Failed to create variety progress diary after updating movie', error);
         }
@@ -1109,7 +1210,13 @@ export const cloudApi = {
     },
   },
   diary: {
-    getByMovie: async (movieId: string): Promise<DiaryEntry[]> => sortByMomentDesc((await getDiaryEntriesForMovie(movieId)).map(toDiary)),
+    getByMovie: async (movieId: string): Promise<DiaryEntry[]> => {
+      const entries = sortByMomentDesc((await getDiaryEntriesForMovie(movieId)).map(toDiary));
+      const record = await getMovieRecord(movieId).catch(() => null);
+      const mediaType = record ? stringField(record, 'mediaType') : '';
+      const reviews = varietyProgressReviews(entries, mediaType);
+      return reviews.size > 0 ? entries.map((entry) => (reviews.has(entry.id) ? { ...entry, review: reviews.get(entry.id) } : entry)) : entries;
+    },
     delete: async (_movieId: string, entryId: string): Promise<void> => {
       await cloudWrite(() => pocketbase.collection('diary_entries').delete(entryId));
       invalidateSnapshot();
@@ -1121,8 +1228,24 @@ export const cloudApi = {
       const { movies, diaries } = await loadSnapshot();
       const byId = new Map(movies.map((record) => [record.id, toMetadata(record)]));
       const all = diaries.map((entry) => ({ entry: toDiary(entry), movie: byId.get(stringField(entry, 'movie')) })).filter((item): item is { entry: DiaryEntry; movie: MovieMetadata } => Boolean(item.movie && (item.movie.status === '已看完' || item.movie.progress)));
+
+      // 综艺进度日记只显示「最新添加」的期数，而非历史全部期数（对既有累积记录同样生效）。
+      const displayReviewByEntry = new Map<string, string>();
+      {
+        const byMovie = new Map<string, { movie: MovieMetadata; entries: DiaryEntry[] }>();
+        for (const { entry, movie } of all) {
+          const group = byMovie.get(movie.id) || { movie, entries: [] };
+          group.entries.push(entry);
+          byMovie.set(movie.id, group);
+        }
+        for (const { movie, entries } of byMovie.values()) {
+          const reviews = varietyProgressReviews(entries, movie.mediaType);
+          for (const [id, review] of reviews) displayReviewByEntry.set(id, review);
+        }
+      }
+
       const months = new Map<string, Map<string, { date: string; weekday: string; items: Array<DiaryEntry & { movieId: string; movieTitle: string; movieThumbPath?: string }> }>>();
-      for (const { entry, movie } of all) { const month = entry.watchDate.slice(0, 7); const days = months.get(month) || new Map(); const day = days.get(entry.watchDate) || { date: entry.watchDate, weekday: ['周日','周一','周二','周三','周四','周五','周六'][parseLocalDate(entry.watchDate).getDay()], items: [] }; day.items.push({ ...entry, movieId: movie.id, movieTitle: movie.title, movieThumbPath: movie.posterThumbPath }); days.set(entry.watchDate, day); months.set(month, days); }
+      for (const { entry, movie } of all) { const month = entry.watchDate.slice(0, 7); const days = months.get(month) || new Map(); const day = days.get(entry.watchDate) || { date: entry.watchDate, weekday: ['周日','周一','周二','周三','周四','周五','周六'][parseLocalDate(entry.watchDate).getDay()], items: [] }; const displayEntry = displayReviewByEntry.has(entry.id) ? { ...entry, review: displayReviewByEntry.get(entry.id) } : entry; day.items.push({ ...displayEntry, movieId: movie.id, movieTitle: movie.title, movieThumbPath: movie.posterThumbPath }); days.set(entry.watchDate, day); months.set(month, days); }
       return [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, days]) => ({ month, days: [...days.values()].sort((a, b) => b.date.localeCompare(a.date)).map((day) => ({ ...day, items: sortByMomentDesc(day.items) })) }));
     },
   },

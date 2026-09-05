@@ -320,7 +320,11 @@ export async function updateMovie(
     const now = new Date();
     const watchTime = getLocalTimeStr();
     const filled = updated.progress.segments.filter(s => s.trim());
-    const review = filled.length > 0 ? filled.join(' · ') : '未标注观看进度';
+    // 只记录本次「最新添加」的期数，避免期刊很多时日记把整个历史分段列表累积显示出来。
+    const prevSegments = (existing.progress?.segments || []).filter(s => s.trim());
+    const prevSegmentsSet = new Set(prevSegments);
+    const added = filled.filter(s => !prevSegmentsSet.has(s));
+    const review = added.length > 0 ? added.join(' · ') : (filled.length > 0 ? filled.join(' · ') : '未标注观看进度');
     const diaryPath = getDiaryPath(newMovieDir);
 
     await writeQueue.enqueue(diaryPath, async () => {
