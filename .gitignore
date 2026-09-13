@@ -25,6 +25,11 @@ Thumbs.db
 # IDE local config
 .idea/
 
+# 临时截图与验证产物
+screenshot-*.png
+screenshot-*.jpg
+screenshot-*.webp
+
 # Android build caches (redirected into workspace for sandboxed builds)
 .gradle-home/
 .android-sdk/
