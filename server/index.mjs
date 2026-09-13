@@ -21,6 +21,9 @@ loadDotEnv();
 
 const TMDB_TOKEN = process.env.TMDB_TOKEN || '';
 const PORT = Number(process.env.PORT || 8787);
+// 默认只监听回环地址：本服务不自己做 TLS，直接暴露到公网会绕过反代的
+// 鉴权与限流。如需直连（例如客户端与服务器同机）再显式设 HOST=0.0.0.0。
+const HOST = process.env.HOST || '127.0.0.1';
 const APP_TOKEN = process.env.APP_TOKEN || '';
 
 // 简单的进程内缓存：结果缓存在内存，进程重启后失效。
@@ -158,6 +161,16 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const pathname = url.pathname;
 
+    // 健康检查：不校验口令、不计入限流，便于反向代理/监控探活。
+    if (pathname === '/api/healthz' && req.method === 'GET') {
+      return sendJson(res, TMDB_TOKEN ? 200 : 503, {
+        ok: Boolean(TMDB_TOKEN),
+        tmdbToken: Boolean(TMDB_TOKEN),
+        appTokenRequired: Boolean(APP_TOKEN),
+        uptime: Math.round(process.uptime()),
+      });
+    }
+
     // 可选访问口令：若服务器配置了 APP_TOKEN，客户端必须携带相同值。
     if (APP_TOKEN && req.headers['x-app-token'] !== APP_TOKEN) {
       return sendJson(res, 401, { error: '未授权访问' });
@@ -234,7 +247,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`PianKe TMDB 代理已启动: http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`PianKe TMDB 代理已启动: http://${HOST}:${PORT}`);
   if (!TMDB_TOKEN) console.warn('警告：尚未配置 TMDB_TOKEN（见 .env.example）');
+  if (!APP_TOKEN) console.warn('警告：未设置 APP_TOKEN，接口无鉴权，请勿直接暴露到公网');
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost') {
+    console.warn(`警告：正在监听 ${HOST}，请确保前面有反向代理负责 TLS 与鉴权`);
+  }
 });

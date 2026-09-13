@@ -1,0 +1,32 @@
+[Unit]
+Description=PianKe TMDB proxy
+Documentation=https://github.com/iNeverland/PianKe
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pianke/server
+ExecStart=/usr/bin/node index.mjs
+
+# 敏感配置放在 .env（chmod 600），由 index.mjs 的 loadDotEnv() 自行加载
+EnvironmentFile=-/opt/pianke/server/.env
+
+# 安全加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

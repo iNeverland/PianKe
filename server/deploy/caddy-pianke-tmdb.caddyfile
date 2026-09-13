@@ -1,0 +1,46 @@
+# PianKe TMDB 代理 —— Caddy 站点片段
+#
+# 适用场景：服务器上已经有 Caddy 在管 80/443（本项目自托管 PocketBase 的机器
+# 就是这种情况，见 /etc/caddy/Caddyfile）。把这个 server 块追加到 Caddyfile 末尾即可，
+# 不要另外装 Nginx —— 两者会抢 80/443。
+#
+# 使用前替换两处占位符：
+#   __DOMAIN__       例：tmdb.example.com
+#   __APP_TOKEN__    与 /opt/pianke/server/.env 里的 APP_TOKEN 完全一致
+#
+# Caddy 会自动为该域名申请并续期 Let's Encrypt 证书，无需 certbot。
+# 前提：该域名的 A 记录已指向本机公网 IP，且 80/443 可从公网访问。
+
+__DOMAIN__ {
+	encode zstd gzip
+
+	# 探活接口免 token，方便外部监控。handle_path 会剥掉 /healthz 前缀，
+	# 因此上游收到的是 /api/healthz（服务端只实现了这个路径）。
+	# 注意：这段绝不能再加 token 校验，否则监控会被 401 挡住。
+	handle_path /healthz {
+		reverse_proxy 127.0.0.1:8787 {
+			rewrite /api/healthz
+		}
+	}
+
+	# 其余请求（/api/search、/api/details、/api/poster）都要带正确的 app token。
+	# 这不是强安全边界（token 在客户端里），真正的防线是限流与用量监控。
+	handle {
+		@unauthorized not header X-App-Token "__APP_TOKEN__"
+		respond @unauthorized `{"error":"未授权访问"}` 401
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	log {
+		output file /var/log/caddy/__DOMAIN__.log
+		format json
+	}
+}

@@ -10,7 +10,7 @@ PianKe 是一款用于收藏影视、记录观看过程和沉淀观后感的**�
 - 界面：React 19 + React Router 7（HashRouter）+ Vite 6 + Tailwind CSS 3
 - 云端数据：PocketBase（认证、数据、私有文件）
 - 离线缓存：IndexedDB（数据快照、海报、截图、头像）
-- 影视元数据：TMDB + 自建代理（Vercel Serverless / Node.js 自托管）
+- 影视元数据：TMDB + 自建 Node.js 代理（Caddy/Nginx 反代）
 - 图表：ECharts；校验：Zod；Excel 导出：SheetJS；图片处理：Sharp
 - 打包发布：electron-builder + GitHub Actions + 自建更新服务器
 
@@ -149,9 +149,15 @@ shared/
 
 ```text
 server/
-├── index.mjs                  # 可自托管的 TMDB Node.js 代理（端口 8787、24h 内存缓存、IP 限流）
+├── index.mjs                  # TMDB Node.js 代理（默认 127.0.0.1:8787、24h 内存缓存、IP 限流、/api/healthz）
 ├── package.json
-├── .env.example               # TMDB_TOKEN / APP_TOKEN / PORT
+├── .env.example               # TMDB_TOKEN / APP_TOKEN / PORT / HOST
+├── deploy/                    # 生产部署脚本与配置（见 docs/tmdb-proxy-selfhost.md）
+│   ├── caddy-pianke-tmdb.caddyfile   # Caddy 站点片段（优先方案，与既有 Caddy 共存）
+│   ├── deploy-caddy.sh               # 把站点幂等插入现有 Caddyfile 并热加载
+│   ├── deploy.sh                     # 无 Caddy 时的一键部署（Nginx + certbot 方案）
+│   ├── nginx-pianke-tmdb.conf        # Nginx 反向代理模板（分 HTTP/TLS 两段）
+│   └── pianke-tmdb.service           # systemd unit（含安全加固）
 ├── pocketbase/
 │   ├── pb_hooks/              # PocketBase 服务端 hook
 │   │   ├── email_verification.pb.js   # 注册/改密邮箱验证码（10 分钟有效、30s 间隔、5 次上限）
@@ -162,14 +168,6 @@ server/
 │       ├── 1786600000_add_cloud_query_indexes.js
 │       ├── 1786700000_add_email_verification_codes.js
 │       └── 1786800000_add_password_reset_code_purpose.js
-└── vercel/                    # TMDB Vercel Serverless 代理（Root Directory）
-    ├── vercel.json
-    ├── api/
-    │   ├── search.mjs         # TMDB 搜索
-    │   ├── details.mjs        # TMDB 详情
-    │   └── poster.mjs         # 海报代理
-    └── lib/
-        └── tmdb.mjs           # TMDB 客户端封装
 ```
 
 ### 3.5 其他目录
