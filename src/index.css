@@ -3491,6 +3491,9 @@ button.titlebar-btn-close:hover {
 
 /* 可访问性：焦点可见，文字/状态不依赖单一颜色；减少动画时完全尊重系统设置。 */
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+/* 对话框容器由程序化聚焦（非键盘导航），不绘制橙色焦点框 */
+.modal-content:focus,
+.modal-content:focus-visible { outline: none; }
 .btn:focus-visible,
 .nav-item:focus-visible,
 .tool-icon:focus-visible,
