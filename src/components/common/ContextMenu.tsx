@@ -16,6 +16,14 @@ interface ContextMenuProps {
 export default function ContextMenu({ items, position, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const adjustedPos = useRef(position);
+  const returnFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+
+  /** 关闭时把焦点还给触发元素（WCAG 2.4.3 焦点顺序） */
+  const closeAndRestoreFocus = useCallback(() => {
+    onClose();
+    const target = returnFocusRef.current;
+    if (target && document.contains(target)) target.focus();
+  }, [onClose]);
 
   // 计算调整后的位置，防止溢出屏幕
   const calcPosition = useCallback(() => {
@@ -44,7 +52,23 @@ export default function ContextMenu({ items, position, onClose }: ContextMenuPro
       }
     };
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeAndRestoreFocus();
+    };
+    /** ↑↓ / Home / End 在菜单项之间移动焦点（ARIA APG menu 模式） */
+    const handleArrowKeys = (e: KeyboardEvent) => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+      const nodes = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('.context-menu-item') ?? []);
+      if (!nodes.length) return;
+      e.preventDefault();
+      const current = nodes.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.key === 'Home'
+        ? 0
+        : e.key === 'End'
+          ? nodes.length - 1
+          : e.key === 'ArrowDown'
+            ? (current + 1 + nodes.length) % nodes.length
+            : (current - 1 + nodes.length) % nodes.length;
+      nodes[next]?.focus();
     };
 
     // 延迟绑定，避免触发右键的 mouseup 也被视为 click outside
@@ -53,13 +77,15 @@ export default function ContextMenu({ items, position, onClose }: ContextMenuPro
       document.addEventListener('contextmenu', handleClickOutside);
     }, 0);
     document.addEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', handleArrowKeys);
 
-    // 首次渲染后，计算并应用调整后的位置
+    // 首次渲染后：定位并把焦点移到第一个菜单项
     requestAnimationFrame(() => {
       adjustedPos.current = calcPosition();
       if (menuRef.current) {
         menuRef.current.style.left = `${adjustedPos.current.x}px`;
         menuRef.current.style.top = `${adjustedPos.current.y}px`;
+        menuRef.current.querySelector<HTMLButtonElement>('.context-menu-item')?.focus();
       }
     });
 
@@ -68,13 +94,16 @@ export default function ContextMenu({ items, position, onClose }: ContextMenuPro
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('contextmenu', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('keydown', handleArrowKeys);
     };
-  }, [onClose, calcPosition]);
+  }, [onClose, calcPosition, closeAndRestoreFocus]);
 
   const menu = (
     <div
       ref={menuRef}
       className="context-menu"
+      role="menu"
+      aria-label="影片操作"
       style={{
         position: 'fixed',
         left: position.x,
@@ -85,10 +114,12 @@ export default function ContextMenu({ items, position, onClose }: ContextMenuPro
       {items.map((item, i) => (
         <button
           key={i}
+          type="button"
+          role="menuitem"
           className={`context-menu-item${item.danger ? ' danger' : ''}`}
           onClick={() => {
             item.onClick();
-            onClose();
+            closeAndRestoreFocus();
           }}
         >
           {item.label}

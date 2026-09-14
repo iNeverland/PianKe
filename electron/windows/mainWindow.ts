@@ -1,10 +1,22 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, nativeTheme } from 'electron';
 import path from 'path';
 
 interface CreateMainWindowOptions {
   baseDir: string;
   devServerUrl?: string;
   onReadyToShow?: () => void;
+}
+
+/** 与 src/index.css 的 --bg-deep 保持一致，避免窗口创建瞬间的明暗闪烁。 */
+const WINDOW_BACKGROUND = { dark: '#0c0c0a', light: '#f5f3ed' } as const;
+
+export function themeBackgroundColor(): string {
+  return nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light;
+}
+
+/** 主题切换后同步窗口底色（渲染进程通过 theme:update 通知主进程）。 */
+export function applyThemeBackground(win: BrowserWindow | null): void {
+  if (win && !win.isDestroyed()) win.setBackgroundColor(themeBackgroundColor());
 }
 
 export function createMainWindow(options: CreateMainWindowOptions): BrowserWindow {
@@ -23,7 +35,7 @@ export function createMainWindow(options: CreateMainWindowOptions): BrowserWindo
       contextIsolation: true,
       nodeIntegration: false,
     },
-    backgroundColor: '#ffffff',
+    backgroundColor: themeBackgroundColor(),
   });
 
   if (options.devServerUrl) {

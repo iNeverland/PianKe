@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import { platform } from '@/platform';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
 import { getShortcutConfig, getShortcutKey, saveShortcutConfig, toDisplayText, toAccelerator, getDefaultConfig, type ShortcutConfig } from '@/hooks/useScreenshotShortcut';
@@ -80,7 +80,7 @@ export default function Settings() {
       if (platform.name === 'electron') {
         void platform.registerShortcut(accel).then((ok) => {
           if (!ok) {
-            showToast('快捷键注册失败，可能被系统占用，请更换');
+            showErrorToast('快捷键注册失败，可能被系统占用，请更换');
             restorePreviousShortcut();
           } else {
             previousShortcutRef.current = null;
@@ -114,7 +114,7 @@ export default function Settings() {
       setCapturing(true);
     } catch {
       previousShortcutRef.current = null;
-      showToast('快捷键暂停失败，请重试');
+      showErrorToast('快捷键暂停失败，请重试');
     }
   }
 
@@ -143,7 +143,7 @@ export default function Settings() {
         showToast(`Excel 已导出（${result.movieCount} 部影视，${result.diaryCount} 条日记，${result.watchRecordCount} 条追剧记录）`, 5000);
       }
     } catch (err: any) {
-      showToast(err.message || 'Excel 导出失败');
+      showErrorToast(err.message || 'Excel 导出失败');
     } finally {
       setExportingExcel(false);
     }
@@ -160,10 +160,10 @@ export default function Settings() {
       } else if (result.status === 'disabled') {
         showToast('开发环境不支持检查更新');
       } else if (result.status === 'error') {
-        showToast(result.message || '检查更新失败，请稍后重试');
+        showErrorToast(result.message || '检查更新失败，请稍后重试');
       }
     } catch {
-      showToast('检查更新失败，请稍后重试');
+      showErrorToast('检查更新失败，请稍后重试');
     } finally {
       setCheckingUpdate(false);
     }
@@ -181,8 +181,11 @@ export default function Settings() {
             <div className="settings-row-label">主题模式</div>
             <div className="settings-row-desc">跟随系统或手动选择深色/浅色</div>
           </div>
-          <div className="theme-switcher">
+          <div className="theme-switcher" role="radiogroup" aria-label="主题模式">
             <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'system'}
               className={`theme-option${theme === 'system' ? ' active' : ''}`}
               onClick={() => applyTheme('system')}
             >
@@ -190,6 +193,9 @@ export default function Settings() {
               系统
             </button>
             <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'dark'}
               className={`theme-option${theme === 'dark' ? ' active' : ''}`}
               onClick={() => applyTheme('dark')}
             >
@@ -197,6 +203,9 @@ export default function Settings() {
               深色
             </button>
             <button
+              type="button"
+              role="radio"
+              aria-checked={theme === 'light'}
               className={`theme-option${theme === 'light' ? ' active' : ''}`}
               onClick={() => applyTheme('light')}
             >
@@ -221,7 +230,7 @@ export default function Settings() {
           </div>
           <div className="flex items-center gap-2">
             {capturing ? (
-              <span className="text-sm text-accent font-semibold animate-pulse">等待按键...</span>
+              <span className="text-sm text-accent-text font-semibold animate-pulse">等待按键...</span>
             ) : (
               <>
                 <span className="text-sm text-text-primary font-semibold bg-bg-elevated px-3 py-1 rounded-md border border-border">
@@ -246,7 +255,7 @@ export default function Settings() {
                           setScreenshotShortcut(def);
                           showToast('已恢复默认快捷键');
                         } else {
-                          showToast('恢复默认失败');
+                          showErrorToast('恢复默认失败');
                         }
                       });
                     } else {

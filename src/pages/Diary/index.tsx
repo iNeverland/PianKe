@@ -7,24 +7,21 @@ import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import PosterThumb from '@/components/common/PosterThumb';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
 import Modal from '@/components/common/Modal';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
+import BackToTop from '@/components/common/BackToTop';
 
 const MONTH_NAMES = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const WEEK_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
 
 // 每日热力图颜色（分级：1-2 / 3-4 / 5+）
-function dailyHeatStyle(count: number, isDark: boolean): React.CSSProperties {
+// 色值来自主题令牌（--heat-*），深浅模式各自保证填充与前景 ≥4.5:1。
+function dailyHeatStyle(count: number): React.CSSProperties {
   if (count === 0) return {};
-  if (isDark) {
-    if (count <= 2) return { background: '#1a4a2e' };
-    if (count <= 4) return { background: '#9e8020' };
-    return { background: '#b53030' };
-  }
-  if (count <= 2) return { background: '#d8f0db' };
-  if (count <= 4) return { background: '#f0d030' };
-  return { background: '#e53e3e' };
+  if (count <= 2) return { background: 'var(--heat-l1)', color: 'var(--heat-l1-on)' };
+  if (count <= 4) return { background: 'var(--heat-l3)', color: 'var(--heat-l3-on)' };
+  return { background: 'var(--heat-l4)', color: 'var(--heat-l4-on)' };
 }
 
 export default function Diary() {
@@ -42,24 +39,6 @@ export default function Diary() {
     entryId: string;
     movieTitle: string;
   } | null>(null);
-  const [isDark, setIsDark] = useState(() => {
-    const theme = document.documentElement.getAttribute('data-theme');
-    if (theme === 'dark') return true;
-    if (theme === 'light') return false;
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-
-  // 监听主题变化
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      const theme = document.documentElement.getAttribute('data-theme');
-      if (theme === 'dark') setIsDark(true);
-      else if (theme === 'light') setIsDark(false);
-      else setIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     loadTimeline();
@@ -117,7 +96,7 @@ export default function Diary() {
       await loadTimeline();
       showToast('观影日记已删除');
     } catch (err: any) {
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -294,7 +273,7 @@ export default function Diary() {
         {isFiltered && (
           <button
             onClick={clearDateFilter}
-            className="text-xs text-accent hover:text-accent/80 transition-colors bg-transparent border-none cursor-pointer whitespace-nowrap"
+            className="text-xs text-accent-text hover:text-accent-text/80 transition-colors bg-transparent border-none cursor-pointer whitespace-nowrap"
           >
             清除筛选
           </button>
@@ -304,8 +283,8 @@ export default function Diary() {
         )}
       </div>
 
-      {/* 左右两栏：时间线 + 热力图 */}
-      <div className="flex gap-8">
+      {/* 左右两栏：时间线 + 热力图（窄视口由 .diary-layout 断点改为单栏，见 index.css） */}
+      <div className="diary-layout">
         {/* 左侧：时间线 */}
         <div className="flex-1 min-w-0 diary-timeline stagger-children">
           {filteredTimeline.length === 0 && isFiltered ? (
@@ -336,7 +315,8 @@ export default function Diary() {
                     <div className="flex flex-col gap-1">
                       {day.items.map((item) => (
                         <div key={`${item.movieId}-${item.id}`} className="relative group">
-                          <div
+                          <button
+                            type="button"
                             onClick={() => navigate(`/movie/${item.movieId}`)}
                             className="timeline-item"
                           >
@@ -355,13 +335,15 @@ export default function Diary() {
                                 <p className="text-text-muted text-xs italic mt-1.5 line-clamp-2 leading-relaxed">{item.review}</p>
                               )}
                             </div>
-                          </div>
+                          </button>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setDeletingDiary({ movieId: item.movieId, entryId: item.id, movieTitle: item.movieTitle });
                             }}
-                            className="absolute top-1/2 -translate-y-1/2 right-4 !text-[#e53e3e] text-xs border cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity px-1.5 py-0.5 rounded bg-card shadow-sm border-border"
+                            aria-label={`删除《${item.movieTitle}》的这条观影日记`}
+                            className="hover-reveal absolute top-1/2 -translate-y-1/2 right-4 !text-red text-xs border cursor-pointer px-1.5 py-0.5 rounded bg-card shadow-sm border-border"
                           >删除</button>
                         </div>
                       ))}
@@ -375,7 +357,7 @@ export default function Diary() {
         </div>
 
         {/* 右侧：热力图 */}
-        <div className="w-[252px] flex-shrink-0">
+        <div className="diary-heatmap">
           <div className="sticky top-8 space-y-8">
             {/* 每日热力图 */}
             <div>
@@ -403,7 +385,7 @@ export default function Diary() {
               {/* 星期头 */}
               <div className="grid grid-cols-7 gap-[3px] mb-1.5">
                 {WEEK_HEADERS.map(w => (
-                  <div key={w} className="text-[0.6rem] text-text-muted text-center font-medium font-display">{w}</div>
+                  <div key={w} className="text-[0.68rem] text-text-muted text-center font-medium font-display">{w}</div>
                 ))}
               </div>
               {/* 日历格子 */}
@@ -414,8 +396,8 @@ export default function Diary() {
                       <div
                         key={cell.date}
                         title={`${cell.date}${cell.inMonth ? ` — ${heatmapData.daily.get(cell.date)?.size || 0} 部` : ''}`}
-                        style={cell.inMonth ? dailyHeatStyle(heatmapData.daily.get(cell.date)?.size || 0, isDark) : { background: 'transparent', color: '#c5c3bd' }}
-                        className="aspect-square rounded-[4px] flex items-center justify-center text-[0.65rem] leading-none font-medium font-display"
+                        style={cell.inMonth ? dailyHeatStyle(heatmapData.daily.get(cell.date)?.size || 0) : { background: 'transparent', color: 'var(--text-muted)', opacity: 0.7 }}
+                        className="aspect-square rounded-[4px] flex items-center justify-center text-[0.68rem] leading-none font-medium font-display"
                       >
                         {cell.day}
                       </div>
@@ -453,22 +435,14 @@ export default function Diary() {
                   const m = parseInt(monthKey.substring(5, 7), 10);
                   const count = movieSet.size;
                   const style: React.CSSProperties = count === 0
-                    ? { color: isDark ? '#8a8985' : '#9e9d99' }
-                    : isDark
-                      ? count <= 3
-                        ? { background: '#1a4a2e', color: '#c0d8c0' }
-                        : count <= 6
-                          ? { background: '#1f6e3a', color: '#d0e8d0' }
-                          : count <= 9
-                            ? { background: '#9e8020', color: '#f0e0a0' }
-                            : { background: '#b53030', color: '#f0c0c0' }
-                      : count <= 3
-                        ? { background: '#d8f0db', color: '#1a1a1a' }
-                        : count <= 6
-                          ? { background: '#40c463', color: '#fff' }
-                          : count <= 9
-                            ? { background: '#f0d030', color: '#1a1a1a' }
-                            : { background: '#e53e3e', color: '#fff' };
+                    ? { color: 'var(--text-muted)' }
+                    : count <= 3
+                      ? { background: 'var(--heat-l1)', color: 'var(--heat-l1-on)' }
+                      : count <= 6
+                        ? { background: 'var(--heat-l2)', color: 'var(--heat-l2-on)' }
+                        : count <= 9
+                          ? { background: 'var(--heat-l3)', color: 'var(--heat-l3-on)' }
+                          : { background: 'var(--heat-l4)', color: 'var(--heat-l4-on)' };
                   return (
                     <div
                       key={monthKey}
@@ -479,7 +453,7 @@ export default function Diary() {
                         style={style}
                         className="w-full h-full rounded-[4px] flex flex-col items-center justify-center"
                       >
-                        <div className="text-[0.55rem] font-medium leading-none mb-0.5 opacity-80">{MONTH_NAMES[m - 1]}</div>
+                        <div className="text-[0.62rem] font-medium leading-none mb-0.5 opacity-80">{MONTH_NAMES[m - 1]}</div>
                         <div className="text-sm font-display font-semibold leading-none">{count}</div>
                       </div>
                     </div>
@@ -490,7 +464,7 @@ export default function Diary() {
               {(heatmapData.viewYear !== now.getFullYear() || heatmapData.viewMonth !== now.getMonth() + 1) && (
                 <button
                   onClick={goToday}
-                  className="mt-3 w-full text-[11px] text-accent hover:text-accent/80 transition-colors bg-transparent border-none cursor-pointer text-center"
+                  className="mt-3 w-full text-[11px] text-accent-text hover:text-accent-text/80 transition-colors bg-transparent border-none cursor-pointer text-center"
                 >
                   回到本月
                 </button>
@@ -499,6 +473,8 @@ export default function Diary() {
           </div>
         </div>
       </div>
+
+      <BackToTop />
 
       <Modal
         open={Boolean(deletingDiary)}

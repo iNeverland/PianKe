@@ -1,6 +1,7 @@
 export default function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
   return (
-    <div className="animate-pulse">
+    <div className="animate-pulse" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">加载中…</span>
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex items-center gap-4 mb-4">
           <div className="w-12 h-[72px] rounded-md bg-bg-elevated flex-shrink-0" />
@@ -16,7 +17,8 @@ export default function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
 
 export function GridSkeleton({ count = 12 }: { count?: number }) {
   return (
-    <div className="movie-grid animate-pulse">
+    <div className="movie-grid animate-pulse" role="status" aria-live="polite" aria-busy="true">
+      <span className="sr-only">加载中…</span>
       {Array.from({ length: count }).map((_, i) => (
         <div key={i}>
           <div className="aspect-[2/3] rounded-[var(--radius)] bg-bg-elevated" />

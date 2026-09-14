@@ -18,6 +18,8 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
   const [open, setOpen] = useState(false);
   const [showYearPicker, setShowYearPicker] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
 
   const initialDate = value ? new Date(value + 'T00:00:00') : new Date();
   const [viewYear, setViewYear] = useState(initialDate.getFullYear());
@@ -37,11 +39,24 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
   useEffect(() => {
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        setOpen(false);
+        // 关闭后把焦点还给触发器（WCAG 2.4.3 焦点顺序）
+        triggerRef.current?.focus();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [open]);
+
+  // 打开后把焦点移入弹层：键盘用户不必 Tab 穿过页面其余控件
+  useEffect(() => {
+    if (!open) return;
+    const target = popupRef.current?.querySelector<HTMLElement>(
+      '.custom-datepicker-day.selected, .custom-datepicker-day.today, .custom-datepicker-title-btn',
+    );
+    target?.focus();
+  }, [open, showYearPicker]);
 
   function openPicker() {
     const d = value ? new Date(value + 'T00:00:00') : new Date();
@@ -68,6 +83,7 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
   function selectDay(day: number) {
     onChange(toDateStr(viewYear, viewMonth, day));
     setOpen(false);
+    triggerRef.current?.focus();
   }
 
   function selectYear(year: number) {
@@ -126,13 +142,13 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
 
   return (
     <div ref={ref} className={`custom-datepicker ${className}`}>
-      <button type="button" className="custom-datepicker-trigger" onClick={openPicker} aria-haspopup="dialog" aria-expanded={open} aria-label={value ? `上映日期：${value}` : '选择上映日期'}>
+      <button ref={triggerRef} type="button" className="custom-datepicker-trigger" onClick={openPicker} aria-haspopup="dialog" aria-expanded={open} aria-label={value ? `上映日期：${value}` : '选择上映日期'}>
         <span className={value ? 'custom-datepicker-value' : 'custom-datepicker-placeholder'}>{displayText}</span>
         <AppIcon name="calendar" className="custom-datepicker-icon" />
       </button>
 
       {open && (
-        <div className="custom-datepicker-popup" role="dialog" aria-label="选择日期">
+        <div ref={popupRef} className="custom-datepicker-popup" role="dialog" aria-label="选择日期">
           {showYearPicker ? (
             <>
               {/* Year picker header */}
@@ -154,6 +170,7 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
                     key={y}
                     type="button"
                     onClick={() => selectYear(y)}
+                    aria-selected={y === viewYear}
                     className={`custom-datepicker-year${y === viewYear ? ' selected' : ''}${y === today.getFullYear() ? ' today' : ''}`}
                   >
                     {y}
@@ -204,6 +221,9 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
                         type="button"
                         disabled={!cell.inMonth}
                         onClick={() => cell.inMonth && selectDay(cell.day)}
+                        aria-selected={cell.inMonth ? cell.isSelected : undefined}
+                        aria-current={cell.isToday ? 'date' : undefined}
+                        aria-label={cell.inMonth ? `${viewYear}年${viewMonth}月${cell.day}日` : undefined}
                         className={`custom-datepicker-day${cell.inMonth ? '' : ' outside'}${cell.isToday ? ' today' : ''}${cell.isSelected ? ' selected' : ''}`}
                       >
                         {cell.day}

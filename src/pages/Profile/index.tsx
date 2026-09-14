@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import Modal from '@/components/common/Modal';
 import PasswordInput from '@/components/common/PasswordInput';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import defaultAvatar from '@/assets/brand/default-avatar.png';
 import { changeCloudPassword, getCloudUser, logoutCloud, requestPasswordChangeCode, updateCloudProfile } from '@/lib/pocketbase';
 import AppIcon from '@/components/common/AppIcon';
@@ -83,7 +83,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
       onProfileChange();
       showToast('个人资料已保存');
     } catch (error) {
-      showToast(messageOf(error, '保存个人资料失败'));
+      showErrorToast(messageOf(error, '保存个人资料失败'));
     } finally {
       setSavingProfile(false);
     }
@@ -110,7 +110,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
       setPasswordOpen(false);
       showToast('密码已修改');
     } catch (error) {
-      showToast(messageOf(error, '密码修改失败，请检查当前密码'));
+      showErrorToast(messageOf(error, '密码修改失败，请检查当前密码'));
     } finally {
       setSavingPassword(false);
     }
@@ -124,7 +124,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
       setPasswordCodeCooldown(30);
       showToast('验证码已发送，请查收邮箱');
     } catch (error) {
-      showToast(messageOf(error, '验证码发送失败，请稍后重试'));
+      showErrorToast(messageOf(error, '验证码发送失败，请稍后重试'));
     } finally {
       setSendingPasswordCode(false);
     }
@@ -181,7 +181,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
         <section className="profile-panel profile-security-panel">
           <div className="profile-panel-heading"><h3>账号与安全</h3></div>
           <div className="profile-action-row"><div><strong>登录密码</strong><p>定期修改密码能更好地保护你的观影记录。</p></div><button className="btn btn-secondary btn-sm" onClick={() => setPasswordOpen(true)}>修改密码</button></div>
-          <div className="profile-action-row profile-logout-row"><div><strong>退出登录</strong><p>退出后，本机将不再保留此账号的登录状态。</p></div><button className="btn btn-ghost btn-sm text-red-500" onClick={logout}>退出登录</button></div>
+          <div className="profile-action-row profile-logout-row"><div><strong>退出登录</strong><p>退出后，本机将不再保留此账号的登录状态。</p></div><button className="btn btn-ghost btn-sm text-red" onClick={logout}>退出登录</button></div>
         </section>
         </div>
       </div>

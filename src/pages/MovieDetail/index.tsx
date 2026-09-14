@@ -8,7 +8,7 @@ import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
 import Modal from '@/components/common/Modal';
 
-import { showToast, showToastWithAction } from '@/components/common/Toast';
+import { showErrorToast, showToast, showToastWithAction } from '@/components/common/Toast';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ScreenshotImage from '@/components/common/ScreenshotImage';
 import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
@@ -119,7 +119,7 @@ export default function MovieDetail() {
           const updated = await api.movie.addScreenshot(id, dataUrl, ext);
           setScreenshots(updated);
         } catch (err: any) {
-          showToast(err.message || '上传失败');
+          showErrorToast(err.message || '上传失败');
         }
       }
     };
@@ -216,7 +216,7 @@ export default function MovieDetail() {
         if (shots.status === 'fulfilled') setScreenshots(shots.value);
       });
     } catch (err: any) {
-      if (isActive()) showToast(err.message || '加载失败');
+      if (isActive()) showErrorToast(err.message || '加载失败');
     }
   }
 
@@ -237,7 +237,7 @@ export default function MovieDetail() {
       showToast('已删除');
       navigate('/');
     } catch (err: any) {
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -250,7 +250,7 @@ export default function MovieDetail() {
       setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
       showToast('追剧记录已添加');
     } catch (err: any) {
-      showToast(err.message || '添加失败');
+      showErrorToast(err.message || '添加失败');
     }
   }
 
@@ -264,7 +264,7 @@ export default function MovieDetail() {
       setDiaryForm({ watchDate: getLocalDateStr(), watchTime: getLocalTimeStr(), rating: 0, review: '' });
       showToast('追剧记录已更新');
     } catch (err: any) {
-      showToast(err.message || '更新失败');
+      showErrorToast(err.message || '更新失败');
     }
   }
 
@@ -287,12 +287,12 @@ export default function MovieDetail() {
             });
             setEntries((prev) => [...prev, restored]);
           }
-        } catch { showToast('撤销失败'); }
+        } catch { showErrorToast('撤销失败'); }
       });
     } catch (err: any) {
       // 回滚
       if (entryToDelete) setEntries((prev) => [...prev, entryToDelete]);
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -306,7 +306,7 @@ export default function MovieDetail() {
       showToast('观影日记已删除');
     } catch (err: any) {
       if (entryToDelete) setDiaryEntries((prev) => [...prev, entryToDelete]);
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -328,7 +328,7 @@ export default function MovieDetail() {
         showToast('进度已更新');
       }
     } catch (err: any) {
-      showToast(err.message || '更新失败');
+      showErrorToast(err.message || '更新失败');
     }
   }
 
@@ -355,7 +355,7 @@ export default function MovieDetail() {
     } catch (err: any) {
       setMovie(previousMovie);
       setProgressForm({ episode: p.episode });
-      showToast(err.message || '更新失败');
+      showErrorToast(err.message || '更新失败');
     } finally {
       setUpdatingProgress(false);
     }
@@ -373,7 +373,7 @@ export default function MovieDetail() {
       await loadMovie();
       showToast(data.saveRecord ? '追剧记录已保存' : '已标记为已看完');
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -389,7 +389,7 @@ export default function MovieDetail() {
       void refreshDiary();
       showToast(`状态已更新为「${status}」`);
     } catch (err: any) {
-      showToast(err.message || '更新失败');
+      showErrorToast(err.message || '更新失败');
     }
   }
 
@@ -429,7 +429,7 @@ export default function MovieDetail() {
         await Promise.all(validFiles.slice(offset, offset + 3).map(upload));
       }
       setScreenshots(await api.movie.listScreenshots(id));
-      showToast(failures ? `${validFiles.length - failures} 张已上传，${failures} 张失败` : `已上传 ${validFiles.length} 张截图`);
+      showErrorToast(failures ? `${validFiles.length - failures} 张已上传，${failures} 张失败` : `已上传 ${validFiles.length} 张截图`);
     } finally {
       setUploadingScreenshots(false);
       e.target.value = '';
@@ -453,7 +453,7 @@ export default function MovieDetail() {
       }
       showToast('截图已删除');
     } catch (err: any) {
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -476,7 +476,7 @@ export default function MovieDetail() {
       setScreenshots(updated);
       setEditingTimestampFile(null);
     } catch (err: any) {
-      showToast(err.message || '保存失败');
+      showErrorToast(err.message || '保存失败');
     }
   }
 
@@ -517,9 +517,17 @@ export default function MovieDetail() {
   };
 
   // 进度百分比 = 当前集 / 总集数
-  const progressPercent = movie.progress?.totalEpisodes
-    ? Math.round(movie.progress.episode / movie.progress.totalEpisodes * 100)
+  // 显示用取整值；填充宽度必须用精确比例，否则右边缘落在格子中间、最后一格与空格之间就看不到缝
+  const progressRatio = movie.progress?.totalEpisodes
+    ? movie.progress.episode / movie.progress.totalEpisodes
     : 0;
+  const progressPercent = Math.round(progressRatio * 100);
+
+  /*
+   * 剧集进度条：统一为"一集一段"的分段样式，不再按集数切换形态。
+   * 段间距由 CSS 依据 --episode-count 自适应收窄（见 .progress-segmented），
+   * 因此几百集的长剧也不会溢出或被固定间距糊成一片。
+   */
 
   return (
     <div>
@@ -563,6 +571,8 @@ export default function MovieDetail() {
             {(['在看', '已看完', '想看'] as const).map((s) => (
               <button
                 key={s}
+                type="button"
+                aria-pressed={movie.status === s}
                 onClick={() => handleStatusChange(s)}
                 className={`status-btn${movie.status === s ? ` ${statusConfig[s].cls}` : ''}`}
               >
@@ -602,13 +612,15 @@ export default function MovieDetail() {
                 <span className="meta-value">
                   {movie.cast.slice(0, 2).join(' / ')}
                   {movie.cast.length > 2 && (
-                    <span
-                      className="inline-flex items-center cursor-pointer text-text-muted hover:text-text-secondary ml-1 gap-0.5"
+                    <button
+                      type="button"
+                      className="inline-flex items-center cursor-pointer text-text-muted hover:text-text-secondary ml-1 gap-0.5 bg-transparent border-none p-0"
                       onClick={() => setCastOpen(!castOpen)}
+                      aria-expanded={castOpen}
                     >
                       <AppIcon name="chevronDown" className={`w-3 h-3 transition-transform ${castOpen ? 'rotate-180' : ''}`} />
                       <span className="text-xs">{castOpen ? '收起' : '更多'}</span>
-                    </span>
+                    </button>
                   )}
                 </span>
                 {castOpen && movie.cast.length > 2 && (
@@ -703,19 +715,25 @@ export default function MovieDetail() {
               className="flex-shrink-0 flex flex-col gap-1.5"
               style={{ width: 'calc((100% - 1.5rem) / 3)' }}
             >
-              <div
-                className="relative aspect-video rounded-lg overflow-hidden border border-border cursor-pointer group bg-bg-elevated w-full"
-                onClick={() => setLightboxIndex(i)}
-              >
-                <ScreenshotThumbnail
-                  movieId={id!}
-                  filename={shot.filename}
-                  alt=""
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
+              <div className="relative aspect-video rounded-lg overflow-hidden border border-border group bg-bg-elevated w-full">
+                {/* 缩略图本体作为可聚焦按钮；删除按钮提为同级，避免按钮嵌套 */}
                 <button
+                  type="button"
+                  onClick={() => setLightboxIndex(i)}
+                  aria-label={`查看第 ${i + 1} 张截图大图`}
+                  className="absolute inset-0 w-full h-full p-0 border-none bg-transparent cursor-pointer"
+                >
+                  <ScreenshotThumbnail
+                    movieId={id!}
+                    filename={shot.filename}
+                    alt=""
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  />
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => { e.stopPropagation(); handleDeleteScreenshot(shot.filename); }}
-                  className="screenshot-delete-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 transition-opacity border-none cursor-pointer"
+                  className="hover-reveal screenshot-delete-btn absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm border-none cursor-pointer"
                   title="删除截图" aria-label="删除截图"
                 >×</button>
               </div>
@@ -758,7 +776,7 @@ export default function MovieDetail() {
                     />
                     <button
                       onClick={() => handleSaveTimestamp(shot.filename)}
-                      className="w-5 h-5 rounded bg-accent text-white flex items-center justify-center border-none cursor-pointer flex-shrink-0"
+                      className="w-5 h-5 rounded bg-accent text-on-accent flex items-center justify-center border-none cursor-pointer flex-shrink-0"
                       title="保存" aria-label="保存时间戳"
                     >
                       <AppIcon name="check" className="w-3 h-3" />
@@ -766,13 +784,15 @@ export default function MovieDetail() {
                   </div>
                 </div>
               ) : (
-                <div
+                <button
+                  type="button"
                   className={`screenshot-timestamp ${tsLabel ? '' : 'screenshot-timestamp-empty'}`}
-                  onClick={(e) => { e.stopPropagation(); startEditTimestamp(shot); }}
+                  onClick={() => startEditTimestamp(shot)}
                   title={tsLabel || '点击填写时间戳'}
+                  aria-label={tsLabel ? `编辑时间戳：${tsLabel}` : '填写截图时间戳'}
                 >
                   {tsLabel || '点击标注 · 第几集 时:分:秒'}
-                </div>
+                </button>
               )}
             </div>
           )})}
@@ -908,18 +928,20 @@ export default function MovieDetail() {
                         void saveSegs(newSegs);
                       }
                     }}
-                    className={`min-w-[48px] px-3.5 h-7 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded transition-colors ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border text-text-muted'}`}
+                    className={`min-w-[48px] px-3.5 h-7 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded transition-colors ${label.trim() ? 'bg-accent border-accent text-on-accent' : 'bg-bg-elevated border-border text-text-muted'}`}
                     style={{ width: getSegmentInputWidth(label) }}
                     placeholder={`#${i + 1}`}
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       const newSegs = segs.filter((_, j) => j !== i);
                       if (newSegs.length === 0) newSegs.push('');
                       setLocalSegs(newSegs);
                       void saveSegs(newSegs);
                     }}
-                    className={`absolute top-0 right-0.5 text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent leading-none ${label.trim() ? 'text-white' : 'text-[#e53e3e]'}`}
+                    aria-label={`删除第 ${i + 1} 个分段`}
+                    className={`hover-reveal absolute top-0 right-0.5 text-xs border-none cursor-pointer bg-transparent leading-none ${label.trim() ? 'text-on-accent' : 'text-red'}`}
                   >×</button>
                 </div>
               ))}
@@ -929,7 +951,7 @@ export default function MovieDetail() {
                   setLocalSegs(newSegs);
                   void saveSegs(newSegs);
                 }}
-                className="w-7 h-7 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent transition-colors flex items-center justify-center text-sm bg-transparent cursor-pointer"
+                className="w-7 h-7 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent-text transition-colors flex items-center justify-center text-sm bg-transparent cursor-pointer"
                 title="添加条目"
               >+</button>
             </div>
@@ -941,32 +963,39 @@ export default function MovieDetail() {
       {movie.mediaType !== '综艺' && movie.progress?.totalEpisodes ? (
         <div className="stat-card-contained mt-9">
           <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-baseline gap-2">
               <span className="text-sm font-semibold text-text-primary">追剧进度</span>
               <span className="text-xs text-text-muted">共 {movie.progress.totalEpisodes} 集</span>
             </div>
-            <span className="text-xs font-semibold text-text-secondary bg-bg-elevated px-2 py-0.5 rounded-md border border-border">
-              第{movie.progress.episode}集
+            <span className="watch-episode-chip">
+              {movie.progress.episode > 0 ? `第${movie.progress.episode}集` : '未开始'}
             </span>
           </div>
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs text-text-muted w-10 flex-shrink-0">进度</span>
-            <div className="flex flex-1 gap-[3px]">
+            <div
+              className="progress-segmented"
+              style={{ '--episode-count': movie.progress.totalEpisodes } as React.CSSProperties}
+              role="progressbar"
+              aria-label="追剧进度"
+              aria-valuemin={0}
+              aria-valuemax={movie.progress.totalEpisodes}
+              aria-valuenow={movie.progress.episode}
+              aria-valuetext={`已看 ${movie.progress.episode} / ${movie.progress.totalEpisodes} 集`}
+            >
               {Array.from({ length: movie.progress.totalEpisodes }, (_, i) => (
-                <div
+                <span
                   key={i}
-                  className={`flex-1 rounded-sm transition-colors duration-200 ${i < movie.progress!.episode ? 'bg-accent' : 'bg-border'}`}
-                  style={{ height: 9 }}
+                  className={i < movie.progress!.episode ? 'is-done' : ''}
                 />
               ))}
             </div>
-            <span className="text-xs text-text-secondary font-semibold w-8 text-right flex-shrink-0">{progressPercent}%</span>
+            <span className="text-xs text-text-secondary font-semibold tabular-nums min-w-[34px] text-right flex-shrink-0">{progressPercent}%</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowProgress(true)} className="btn btn-secondary btn-sm">
+            <button type="button" onClick={() => setShowProgress(true)} className="btn btn-secondary btn-sm">
               更新进度
             </button>
-            <button onClick={handleNextEpisode} className="btn btn-secondary btn-sm" title="下一集" disabled={updatingProgress}>
+            <button type="button" onClick={handleNextEpisode} className="btn btn-primary btn-sm" title="下一集" disabled={updatingProgress}>
               下一集
             </button>
           </div>

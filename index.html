@@ -5,18 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="PianKe 片刻 — 个人影视日记" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="color-scheme" content="light dark" />
     <title>PianKe</title>
+    <script>
+      /*
+       * 首屏前确定主题：避免浅色主题下的暗色闪烁 / 深色主题下的白色闪烁（WCAG 无需，但属 HIG 体验项）。
+       * 与 src/App.tsx、src/pages/Settings 使用同一 localStorage 键（film-log-theme）。
+       * 同时把 color-scheme 固定到实际主题，使原生控件、滚动条与自动填充跟随应用主题而非仅跟随系统。
+       */
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('film-log-theme'); } catch (e) { /* 隐私模式等场景忽略 */ }
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var dark = stored === 'dark' || (stored !== 'light' && prefersDark);
+        if (stored === 'dark' || stored === 'light') {
+          document.documentElement.setAttribute('data-theme', stored);
+        }
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+      })();
+    </script>
     <style>
-      /* 首屏关键 CSS：避免白屏 */
+      /* 首屏关键 CSS：避免白屏与主题闪烁 */
       html, body, #root {
         height: 100%;
         margin: 0;
         padding: 0;
       }
       body {
-        background: #08080d;
-        color: #e8e8f0;
+        background: #f5f3ed;
+        color: #1a1a1a;
         font-family: 'Geist Variable', 'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif;
+      }
+      html[data-theme="dark"] body {
+        background: #0c0c0a;
+        color: #f0ede5;
+      }
+      @media (prefers-color-scheme: dark) {
+        html:not([data-theme="light"]) body {
+          background: #0c0c0a;
+          color: #f0ede5;
+        }
       }
     </style>
   </head>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import api from '@/lib/api';
 import { getCloudScreenshotsByMovie, listCloudMediaMovies } from '@/lib/cloudApi';
@@ -176,6 +176,41 @@ function PhotoLightbox({ movieId, movieTitle, media, onClose, onPrevious, onNext
   hasNext: boolean;
 }) {
   const [imageUrl, setImageUrl] = useState<string | null>(media.filename ? null : media.src || null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+
+  // 打开时把焦点移入灯箱，关闭后归还给触发元素；同时锁住背景滚动
+  useEffect(() => {
+    const returnFocus = returnFocusRef.current;
+    const scroller = document.querySelector<HTMLElement>('.main-content');
+    if (scroller) scroller.style.overflow = 'hidden';
+    closeRef.current?.focus();
+    return () => {
+      if (scroller) scroller.style.overflow = '';
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    };
+  }, []);
+
+  // Tab 焦点循环，避免焦点跑到被遮住的背景内容（WCAG 2.4.3）
+  useEffect(() => {
+    const trap = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !containerRef.current) return;
+      const nodes = Array.from(containerRef.current.querySelectorAll<HTMLElement>('button:not([disabled])'));
+      if (!nodes.length) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', trap);
+    return () => window.removeEventListener('keydown', trap);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -205,8 +240,8 @@ function PhotoLightbox({ movieId, movieTitle, media, onClose, onPrevious, onNext
   }, [hasNext, hasPrevious, onClose, onNext, onPrevious]);
 
   return (
-    <div className="photo-wall-lightbox" role="dialog" aria-modal="true" aria-label={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}预览`} onClick={onClose}>
-      <button className="photo-wall-lightbox-close" onClick={onClose} aria-label="关闭预览">
+    <div ref={containerRef} className="photo-wall-lightbox" role="dialog" aria-modal="true" aria-label={`${movieTitle}${media.kind === 'poster' ? '海报' : '截图'}预览`} onClick={onClose}>
+      <button ref={closeRef} className="photo-wall-lightbox-close" onClick={onClose} aria-label="关闭预览">
         <AppIcon name="close" />
       </button>
       <button className="photo-wall-lightbox-nav previous" onClick={(event) => { event.stopPropagation(); onPrevious(); }} disabled={!hasPrevious} aria-label="上一张">

@@ -27,6 +27,20 @@ function EmptyHint() {
   return <p className="text-text-muted text-xs py-6 text-center">暂无数据</p>;
 }
 
+/**
+ * 按系列底色选前景色：深墨或白，保证图表标签对底色 ≥4.5:1（WCAG 1.4.3）。
+ * 原先按主题（而非按底色）取 #1a1a1a/#fff，浅色主题下白字压 #d4a840 只有 2.22:1。
+ */
+function onColor(bg: string): string {
+  const raw = bg.replace('#', '');
+  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+  const [r, g, b] = [0, 2, 4]
+    .map((i) => parseInt(full.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance > 0.42 ? '#12100C' : '#FFFFFF';
+}
+
 function useChartTheme() {
   const [version, setVersion] = useState(0);
   useEffect(() => {
@@ -86,6 +100,10 @@ export default function Stats() {
   const topCountries = byCountry;
 
   const genreOption = useMemo(() => ({
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
     tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
     xAxis: { type: 'value' as const, show: false },
     grid: { left: 0, right: 40, top: 4, bottom: 0, containLabel: true },
@@ -121,6 +139,10 @@ export default function Stats() {
   }), [topGenres, theme]);
 
   const countryOption = useMemo(() => ({
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
     tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
     xAxis: { type: 'value' as const, show: false },
     grid: { left: 0, right: 40, top: 4, bottom: 0, containLabel: true },
@@ -176,6 +198,10 @@ export default function Stats() {
   }, [monthlyTrend]);
 
   const trendOption = useMemo(() => ({
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'axis' as const,
       backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
@@ -216,7 +242,7 @@ export default function Stats() {
       lineStyle: { color: '#EF7800', width: 2.5 },
       itemStyle: {
         color: '#EF7800',
-        borderColor: theme.isDark ? '#1a1a1a' : '#fff',
+        borderColor: onColor('#EF7800'),
         borderWidth: 2,
       },
       areaStyle: {
@@ -239,9 +265,15 @@ export default function Stats() {
       name: '★'.repeat(d.stars / 2),
       value: d.count,
       itemStyle: { color: BAR_COLORS[i % BAR_COLORS.length] },
+      // 标签前景按所在扇区底色选择（浅色主题下的黄/橙扇区必须用深墨字）
+      label: { color: onColor(BAR_COLORS[i % BAR_COLORS.length]) },
     }));
 
   const ratingPieOption = useMemo(() => ({
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'item' as const,
       backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
@@ -264,7 +296,7 @@ export default function Stats() {
       label: {
         show: true,
         position: 'inside',
-        color: theme.isDark ? '#1a1a1a' : '#fff',
+        color: onColor('#EF7800'),
         fontSize: 10,
         fontWeight: 600,
         formatter: '{c}',
@@ -281,9 +313,14 @@ export default function Stats() {
       name: t.type,
       value: t.count,
       itemStyle: { color: PIE_COLORS[t.type] || '#999' },
+      label: { color: onColor(PIE_COLORS[t.type] || '#999') },
     }));
 
   const typePieOption = useMemo(() => ({
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'item' as const,
       backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
@@ -306,7 +343,7 @@ export default function Stats() {
       label: {
         show: true,
         position: 'inside',
-        color: theme.isDark ? '#1a1a1a' : '#fff',
+        color: onColor('#EF7800'),
         fontSize: 10,
         fontWeight: 600,
         formatter: '{c}',

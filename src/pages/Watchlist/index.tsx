@@ -5,7 +5,7 @@ import type { MovieSummary } from '@shared/types/index';
 import { getLocalDateStr } from '@shared/utils/date';
 import EmptyState from '@/components/common/EmptyState';
 import PosterThumb from '@/components/common/PosterThumb';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 
 export default function Watchlist() {
@@ -34,7 +34,7 @@ export default function Watchlist() {
       showToast(`「${movie.title}」已标记为追剧中`);
       loadWatchlist();
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -45,7 +45,7 @@ export default function Watchlist() {
       showToast(`「${movie.title}」已标记为已看完`);
       loadWatchlist();
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -59,7 +59,7 @@ export default function Watchlist() {
       }
       loadWatchlist();
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -86,27 +86,30 @@ export default function Watchlist() {
             const isPinned = movie.tags.includes('置顶');
             return (
             <div key={movie.id} className={`row-item${isPinned ? ' pinned' : ''}`}>
-              <div
+              <button
+                type="button"
                 onClick={() => navigate(`/movie/${movie.id}`)}
-                className="row-item-poster"
+                className="row-item-main"
               >
-                <PosterThumb
-                  movieId={movie.id}
-                  hasPoster={Boolean(movie.posterThumbPath)}
-                  alt={movie.title}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-
-              <div onClick={() => navigate(`/movie/${movie.id}`)} className="row-item-info">
-                <div className="row-item-title">{movie.title}</div>
-                <div className="row-item-meta">
-                  {movie.releaseDate?.substring(0, 4)} · {movie.mediaType}{movie.genre.length > 0 ? ` · ${movie.genre.slice(0, 2).join('/')}` : ''}
+                <div className="row-item-poster">
+                  <PosterThumb
+                    movieId={movie.id}
+                    hasPoster={Boolean(movie.posterThumbPath)}
+                    alt=""
+                    className="w-full h-full object-cover"
+                  />
                 </div>
-                {movie.titleOriginal && (
-                  <div className="row-item-meta italic">{movie.titleOriginal}</div>
-                )}
-              </div>
+
+                <div className="row-item-info">
+                  <div className="row-item-title">{movie.title}</div>
+                  <div className="row-item-meta">
+                    {movie.releaseDate?.substring(0, 4)} · {movie.mediaType}{movie.genre.length > 0 ? ` · ${movie.genre.slice(0, 2).join('/')}` : ''}
+                  </div>
+                  {movie.titleOriginal && (
+                    <div className="row-item-meta italic">{movie.titleOriginal}</div>
+                  )}
+                </div>
+              </button>
 
               <div className="row-item-rating">
                 ★ {movie.rating.toFixed(1)}

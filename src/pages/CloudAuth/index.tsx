@@ -82,18 +82,20 @@ export default function CloudAuth() {
           {isRegistering && (
             <input className="form-input w-full" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="昵称（可选）" autoComplete="name" />
           )}
-          <input className="form-input w-full" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" autoComplete="email" required autoFocus />
+          <input className="form-input w-full" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" autoComplete="email" required autoFocus
+            aria-invalid={Boolean(error)} aria-describedby={error ? 'auth-error' : undefined} aria-label="邮箱" />
           {(isRegistering || isResetting) && (
             <div className="flex gap-2">
-              <input className="form-input min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="邮箱验证码" autoComplete="one-time-code" required />
+              <input className="form-input min-w-0 flex-1" value={code} onChange={(e) => setCode(e.target.value)} placeholder="邮箱验证码" autoComplete="one-time-code" required
+                aria-invalid={Boolean(error)} aria-describedby={error ? 'auth-error' : undefined} aria-label="邮箱验证码" />
               <button className="btn btn-secondary whitespace-nowrap" type="button" onClick={sendCode} disabled={sendingCode || codeCooldown > 0}>{sendingCode ? '发送中…' : codeCooldown > 0 ? `${codeCooldown} 秒后重发` : '获取验证码'}</button>
             </div>
           )}
-          <PasswordInput value={password} onChange={setPassword} placeholder={isResetting ? '新密码（至少 8 位）' : '密码（至少 8 位）'} autoComplete={isRegistering || isResetting ? 'new-password' : 'current-password'} required minLength={8} className="w-full" />
+          <PasswordInput value={password} onChange={setPassword} placeholder={isResetting ? '新密码（至少 8 位）' : '密码（至少 8 位）'} autoComplete={isRegistering || isResetting ? 'new-password' : 'current-password'} required minLength={8} className="w-full" invalid={Boolean(error)} describedBy={error ? 'auth-error' : undefined} />
           {isResetting && (
             <PasswordInput value={passwordConfirm} onChange={setPasswordConfirm} placeholder="确认新密码" autoComplete="new-password" required minLength={8} className="w-full" />
           )}
-          {error && <p className="text-xs text-red-500 text-left px-1">{error}</p>}
+          {error && <p id="auth-error" role="alert" className="text-xs text-red text-left px-1">{error}</p>}
           <button className="btn btn-primary w-full" type="submit" disabled={submitting}>
             {submitting ? '请稍候…' : isRegistering ? '创建账号并进入' : isResetting ? '重置密码并登录' : '登录并进入'}
           </button>

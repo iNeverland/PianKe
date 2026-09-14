@@ -5,7 +5,7 @@ import type { MovieSummary, WatchStatus } from '@shared/types/index';
 import { getLocalDateStr } from '@shared/utils/date';
 import EmptyState from '@/components/common/EmptyState';
 import PosterThumb from '@/components/common/PosterThumb';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ProgressBar from '@/components/common/ProgressBar';
 import Header from '@/components/layout/Header';
@@ -54,7 +54,7 @@ export default function Watching() {
       setMovies((prev) => prev.map((item) => (
         item.id === movie.id ? { ...item, progress: previousProgress } : item
       )));
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     } finally {
       setUpdatingMovieId(null);
     }
@@ -102,7 +102,7 @@ export default function Watching() {
       setFinishingMovie(null);
       await loadMovies();
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -129,34 +129,37 @@ export default function Watching() {
 
             return (
               <div key={movie.id} className="row-item">
-                <div
+                <button
+                  type="button"
                   onClick={() => navigate(`/movie/${movie.id}`)}
-                  className="row-item-poster"
+                  className="row-item-main"
                 >
-                  <PosterThumb
-                    movieId={movie.id}
-                    hasPoster={Boolean(movie.posterThumbPath)}
-                    alt={movie.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-
-                <div onClick={() => navigate(`/movie/${movie.id}`)} className="row-item-info">
-                  <div className="row-item-title">{movie.title}</div>
-                  <div className="row-item-meta">
-                    {movie.releaseDate?.substring(0, 4)} · {movie.mediaType}{movie.genre.length > 0 ? ` · ${movie.genre.slice(0, 2).join('/')}` : ''}
+                  <div className="row-item-poster">
+                    <PosterThumb
+                      movieId={movie.id}
+                      hasPoster={Boolean(movie.posterThumbPath)}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   </div>
-                  {p && p.totalEpisodes && (
-                    <div className="mt-1.5">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <span className="text-[0.65rem] text-text-muted">
-                          第{p.episode}集 / 共{totalEps}集
-                        </span>
-                      </div>
-                      <ProgressBar label="总进度" percent={totalPercent} />
+
+                  <div className="row-item-info">
+                    <div className="row-item-title">{movie.title}</div>
+                    <div className="row-item-meta">
+                      {movie.releaseDate?.substring(0, 4)} · {movie.mediaType}{movie.genre.length > 0 ? ` · ${movie.genre.slice(0, 2).join('/')}` : ''}
                     </div>
-                  )}
-                </div>
+                    {p && p.totalEpisodes && (
+                      <div className="mt-1.5">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[0.65rem] text-text-muted">
+                            第{p.episode}集 / 共{totalEps}集
+                          </span>
+                        </div>
+                        <ProgressBar label="总进度" percent={totalPercent} />
+                      </div>
+                    )}
+                  </div>
+                </button>
 
                 <div className="row-item-rating">
                   ★ {movie.rating.toFixed(1)}

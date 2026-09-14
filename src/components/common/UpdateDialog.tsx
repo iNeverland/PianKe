@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { AppUpdateState } from '@shared/types/index';
 import { platform } from '@/platform';
-import { showToast } from './Toast';
+import { showErrorToast, showToast } from './Toast';
 import Modal from './Modal';
 import AppIcon from './AppIcon';
 
@@ -58,7 +58,7 @@ export default function UpdateDialog() {
       }
     } catch {
       setStartingDownload(false);
-      showToast('更新下载失败，请稍后重试');
+      showErrorToast('更新下载失败，请稍后重试');
     }
   };
 
@@ -77,7 +77,7 @@ export default function UpdateDialog() {
     >
       <div className="px-6 pb-6">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-xl bg-accent-dim text-accent flex items-center justify-center">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-accent-dim text-accent-text flex items-center justify-center">
             <AppIcon name="download" className="w-5 h-5" />
           </div>
           <div className="min-w-0 pt-0.5">
@@ -125,7 +125,7 @@ export default function UpdateDialog() {
               type="button"
               onClick={() => { void handleDownload(); }}
               disabled={startingDownload}
-              className="rounded-btn bg-accent px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
+              className="rounded-btn bg-accent px-4 py-2 text-xs font-medium text-on-accent transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
             >
               {startingDownload ? '正在开始下载…' : '立即更新'}
             </button>

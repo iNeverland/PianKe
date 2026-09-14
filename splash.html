@@ -58,6 +58,13 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    /* 浅色系统：闪屏跟随系统明暗，避免浅色主题用户看到全黑闪屏 */
+    @media (prefers-color-scheme: light) {
+      body { background: #f5f3ed; }
+      .title { color: #1a1a1a; }
+      .subtitle { color: #6b6b6b; }
+      .spinner { border-color: #e5e0d5; border-top-color: #b85c00; }
+    }
   </style>
 </head>
 <body>

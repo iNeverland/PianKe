@@ -9,9 +9,13 @@ interface PasswordInputProps {
   required?: boolean;
   minLength?: number;
   className?: string;
+  /** 校验失败时置为 true（aria-invalid），便于读屏播报错误状态 */
+  invalid?: boolean;
+  /** 关联的错误提示元素 id（aria-describedby） */
+  describedBy?: string;
 }
 
-export default function PasswordInput({ value, onChange, placeholder, autoComplete, required, minLength, className }: PasswordInputProps) {
+export default function PasswordInput({ value, onChange, placeholder, autoComplete, required, minLength, className, invalid, describedBy }: PasswordInputProps) {
   const [visible, setVisible] = useState(false);
   return (
     <div className="password-input-wrap">
@@ -24,6 +28,8 @@ export default function PasswordInput({ value, onChange, placeholder, autoComple
         autoComplete={autoComplete}
         required={required}
         minLength={minLength}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
       />
       <button
         type="button"

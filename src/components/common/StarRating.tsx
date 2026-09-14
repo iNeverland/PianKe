@@ -24,11 +24,17 @@ function injectBounceKeyframes() {
 export default function StarRating({ value, onChange, size = 20, readOnly = false }: StarRatingProps) {
   // 5 颗星，分别对应 2/4/6/8/10 分
   const stars = [2, 4, 6, 8, 10];
+  // 可交互时命中区扩到 ≥44×44（HIG 触控热区），图标本身仍是 size；只读展示保持紧凑
+  const hit = readOnly ? size : Math.max(44, size);
 
   injectBounceKeyframes();
 
   return (
-    <div className="flex items-center gap-1">
+    <div
+      className="flex items-center gap-1"
+      role={readOnly ? 'img' : 'radiogroup'}
+      aria-label={readOnly ? `评分 ${value ? value / 2 : 0} 星` : '选择评分'}
+    >
       {stars.map((star) => {
         const filled = star <= value;
 
@@ -36,6 +42,9 @@ export default function StarRating({ value, onChange, size = 20, readOnly = fals
           <button
             key={star}
             type="button"
+            role={readOnly ? undefined : 'radio'}
+            aria-checked={readOnly ? undefined : value === star}
+            aria-hidden={readOnly || undefined}
             disabled={readOnly}
             onClick={() => {
               if (onChange) {
@@ -49,15 +58,15 @@ export default function StarRating({ value, onChange, size = 20, readOnly = fals
                 }
               }
             }}
-            className={`${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110'} transition-transform bg-transparent border-none p-0`}
-            style={{ width: size, height: size }}
-            aria-label={`${star}分`}
+            className={`${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110'} transition-transform bg-transparent border-none p-0 flex items-center justify-center`}
+            style={{ width: hit, height: hit }}
+            aria-label={readOnly ? undefined : `${star / 2} 星`}
           >
             <svg
               viewBox="0 0 24 24"
               width={size}
               height={size}
-              className={filled ? 'text-star' : 'text-border'}
+              className={filled ? 'text-star' : 'text-muted'}
               style={{ transition: 'color 0.2s ease' }}
             >
               <path

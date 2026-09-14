@@ -282,6 +282,8 @@ export default function Home() {
                   {TYPE_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
+                      type="button"
+                      aria-pressed={filterType === opt.value}
                       className={`filter-chip text-xs ${filterType === opt.value ? 'active' : ''}`}
                       onClick={() => setFilterType(opt.value)}
                     >
@@ -296,6 +298,8 @@ export default function Home() {
                   {STATUS_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
+                      type="button"
+                      aria-pressed={filterStatus === opt.value}
                       className={`filter-chip text-xs ${filterStatus === opt.value ? 'active' : ''}`}
                       onClick={() => setFilterStatus(opt.value)}
                     >
@@ -310,6 +314,8 @@ export default function Home() {
                   {RATING_OPTIONS.map(opt => (
                     <button
                       key={opt.value}
+                      type="button"
+                      aria-pressed={filterRating === opt.value}
                       className={`filter-chip text-xs ${filterRating === opt.value ? 'active' : ''}`}
                       onClick={() => setFilterRating(opt.value)}
                     >
@@ -332,6 +338,8 @@ export default function Home() {
               {SORT_OPTIONS.map(opt => (
                 <button
                   key={opt.value}
+                  type="button"
+                  aria-pressed={sortBy === opt.value}
                   className={`sort-item ${sortBy === opt.value ? 'active' : ''}`}
                   onClick={() => {
                     setSortBy(opt.value);

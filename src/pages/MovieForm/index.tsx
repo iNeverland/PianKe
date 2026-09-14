@@ -3,17 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
 import type { MediaType, WatchStatus, Progress, TmdbSearchResult } from '@shared/types/index';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import CustomSelect from '@/components/common/CustomSelect';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
 import AppIcon from '@/components/common/AppIcon';
 
+// 与 electron/modules/tmdb/service.ts 的 normalizeGenres 输出保持一致：
+// TMDB 导入产生的类型都能在这里手动勾选/取消（含剧集类型库复合类型的拆分结果）
 const GENRE_OPTIONS = [
   '动作', '冒险', '喜剧', '犯罪',
   '剧情', '家庭', '奇幻', '历史',
   '恐怖', '音乐', '悬疑', '爱情', '科幻', '古装', '真人秀',
-  '惊悚', '战争', '西部',
+  '惊悚', '战争', '西部', '动画', '纪录片',
+  '儿童', '新闻', '脱口秀', '肥皂剧', '政治', '电视电影',
 ];
 
 const EMPTY_FORM = {
@@ -89,7 +92,7 @@ export default function MovieForm() {
           status: movie.status, progress: movie.progress,
         }));
       } catch (err: any) {
-        showToast(err.message || '加载失败');
+        showErrorToast(err.message || '加载失败');
         navigate('/');
       } finally {
         setLoading(false);
@@ -144,7 +147,7 @@ export default function MovieForm() {
       setPosterPreview(dataUrl);
       setExistingPosterUrl(null);
     };
-    reader.onerror = () => showToast('读取图片失败，请重试');
+    reader.onerror = () => showErrorToast('读取图片失败，请重试');
     reader.readAsDataURL(file);
   }
 
@@ -198,7 +201,7 @@ export default function MovieForm() {
       setTmdbSearching(true);
       setTmdbResults(await api.tmdb.search(query));
     } catch (err: any) {
-      showToast(err.message || 'TMDB 搜索失败');
+      showErrorToast(err.message || 'TMDB 搜索失败');
     } finally {
       setTmdbSearching(false);
     }
@@ -241,7 +244,7 @@ export default function MovieForm() {
       setTmdbResults([]);
       showToast('已填充 TMDB 信息，请确认后保存');
     } catch (err: any) {
-      showToast(err.message || '导入 TMDB 信息失败');
+      showErrorToast(err.message || '导入 TMDB 信息失败');
     } finally {
       setTmdbImportingId(null);
     }
@@ -284,7 +287,7 @@ export default function MovieForm() {
         navigate(`/movie/${movie.id}`, { replace: true });
       }
     } catch (err: any) {
-      showToast(err.message || '保存失败');
+      showErrorToast(err.message || '保存失败');
     }
   }
 
@@ -315,6 +318,15 @@ export default function MovieForm() {
           <div
             className={`form-poster-zone${shownPoster ? ' has-poster' : ''}${isPosterDragging ? ' is-dragging' : ''}`}
             onClick={() => !shownPoster && fileInputRef.current?.click()}
+            role={shownPoster ? undefined : 'button'}
+            tabIndex={shownPoster ? undefined : 0}
+            aria-label={shownPoster ? undefined : '选择海报图片'}
+            onKeyDown={(e) => {
+              if (!shownPoster && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
             onDragEnter={(e) => { e.preventDefault(); setIsPosterDragging(true); }}
             onDragOver={(e) => e.preventDefault()}
             onDragLeave={(e) => {
@@ -366,7 +378,7 @@ export default function MovieForm() {
                     type="button"
                     onClick={() => void handleTmdbImport(result)}
                     disabled={tmdbImportingId !== null}
-                    className="w-full flex items-center justify-between gap-3 py-2.5 text-left bg-transparent border-none cursor-pointer hover:text-accent disabled:cursor-wait"
+                    className="w-full flex items-center justify-between gap-3 py-2.5 text-left bg-transparent border-none cursor-pointer hover:text-accent-text disabled:cursor-wait"
                   >
                     <span className="min-w-0">
                       <span className="block text-sm font-medium truncate">{result.title}</span>
@@ -513,17 +525,19 @@ export default function MovieForm() {
                               newSegs[i] = e.target.value;
                               setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
                             }}
-                            className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${label.trim() ? 'bg-accent border-accent text-white' : 'bg-bg-elevated border-border'}`}
+                            className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${label.trim() ? 'bg-accent border-accent text-on-accent' : 'bg-bg-elevated border-border'}`}
                             style={{ width: getSegmentInputWidth(label) }}
                             placeholder={`#${i + 1}`}
                           />
                           <button
+                            type="button"
                             onClick={() => {
                               const newSegs = segs.filter((_, j) => j !== i);
                               if (newSegs.length === 0) newSegs.push('');
                               setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
                             }}
-                            className={`absolute top-0 right-0.5 text-xs border-none cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity bg-transparent leading-none ${label.trim() ? 'text-white' : 'text-[#e53e3e]'}`}
+                            aria-label={`删除第 ${i + 1} 个分段`}
+                            className={`hover-reveal absolute top-0 right-0.5 text-xs border-none cursor-pointer bg-transparent leading-none ${label.trim() ? 'text-on-accent' : 'text-red'}`}
                           >×</button>
                         </div>
                       ))}
@@ -533,7 +547,7 @@ export default function MovieForm() {
                           const newSegs = [...segs, ''];
                           setForm({ ...form, progress: { ...p, segments: newSegs, totalEpisodes: newSegs.length } });
                         }}
-                        className="w-8 h-8 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent transition-colors flex items-center justify-center bg-transparent cursor-pointer"
+                        className="w-8 h-8 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent-text transition-colors flex items-center justify-center bg-transparent cursor-pointer"
                       >+</button>
                     </div>
                   </div>
@@ -566,7 +580,7 @@ export default function MovieForm() {
             <div className="form-section-title">分类标签</div>
             <div className="flex flex-wrap gap-1.5">
               {GENRE_OPTIONS.map((g) => (
-                <button key={g} type="button" onClick={() => toggleGenre(g)} className={`tag tag-selectable${form.genre.includes(g) ? ' selected' : ''}`}>{g}</button>
+                <button key={g} type="button" aria-pressed={form.genre.includes(g)} onClick={() => toggleGenre(g)} className={`tag tag-selectable${form.genre.includes(g) ? ' selected' : ''}`}>{g}</button>
               ))}
             </div>
             <div>
@@ -579,7 +593,13 @@ export default function MovieForm() {
             {form.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {form.tags.map((t) => (
-                  <span key={t} onClick={() => removeTag(t)} className="tag tag-accent cursor-pointer">{t} ×</span>
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => removeTag(t)}
+                    aria-label={`移除标签 ${t}`}
+                    className="tag tag-accent cursor-pointer border-none"
+                  >{t} ×</button>
                 ))}
               </div>
             )}

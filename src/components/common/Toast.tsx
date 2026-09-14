@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
+import AppIcon from '@/components/common/AppIcon';
+
+type ToastSeverity = 'info' | 'error';
 
 interface ToastItem {
   id: number;
   message: string;
+  severity: ToastSeverity;
   action?: { label: string; onClick: () => void };
 }
 
@@ -25,10 +29,26 @@ function scheduleDismiss(id: number, duration: number): void {
   }, duration);
 }
 
-export function showToast(message: string, duration = 2500) {
+export function showToast(message: string, duration = 2500, severity: ToastSeverity = 'info') {
   const id = ++toastId;
-  listeners.forEach((fn) => fn({ id, message }, false));
+  listeners.forEach((fn) => fn({ id, message, severity }, false));
   scheduleDismiss(id, duration);
+}
+
+/** 立即关闭当前提示（WCAG 2.2.1：用户可主动结束自动消失的内容） */
+export function dismissToast(): void {
+  if (dismissTimer) clearTimeout(dismissTimer);
+  if (removeTimer) clearTimeout(removeTimer);
+  listeners.forEach((fn) => fn(null, true));
+  removeTimer = setTimeout(() => listeners.forEach((fn) => fn(null, false)), 200);
+}
+
+/**
+ * 错误提示：屏幕阅读器需要立即播报（role="alert" / aria-live="assertive"），
+ * 因此单独导出，避免调用方漏传 severity；停留时间也更长（WCAG 4.1.3、2.2.1）。
+ */
+export function showErrorToast(message: string, duration = 5000) {
+  showToast(message, duration, 'error');
 }
 
 export function showToastWithAction(
@@ -38,7 +58,7 @@ export function showToastWithAction(
   duration = 4000
 ) {
   const id = ++toastId;
-  listeners.forEach((fn) => fn({ id, message, action: { label: actionLabel, onClick: onAction } }, false));
+  listeners.forEach((fn) => fn({ id, message, severity: 'info', action: { label: actionLabel, onClick: onAction } }, false));
   scheduleDismiss(id, duration);
 }
 
@@ -61,8 +81,15 @@ export default function Toast() {
 
   if (!toast && !exiting) return null;
 
+  const isError = toast?.severity === 'error';
+
   return (
-    <div className={`toast${exiting ? ' exiting' : ''}`}>
+    <div
+      className={`toast${exiting ? ' exiting' : ''}`}
+      role={isError ? 'alert' : 'status'}
+      aria-live={isError ? 'assertive' : 'polite'}
+      aria-atomic="true"
+    >
       <div className="toast-content">
         <span>{toast?.message}</span>
         {toast?.action && (
@@ -79,6 +106,9 @@ export default function Toast() {
             {toast.action.label}
           </button>
         )}
+        <button type="button" className="toast-close-btn" onClick={dismissToast} aria-label="关闭提示" title="关闭提示">
+          <AppIcon name="close" className="w-3 h-3" />
+        </button>
       </div>
     </div>
   );

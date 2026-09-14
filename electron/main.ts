@@ -50,7 +50,9 @@ if (!gotLock) {
 }
 
 app.whenReady().then(() => {
-  nativeTheme.themeSource = 'dark';
+  // 默认跟随系统明暗（用户选择由渲染进程通过 theme:update 同步过来）；
+  // 之前固定 'dark' 会让浅色系统用户在窗口创建瞬间看到暗色底。
+  nativeTheme.themeSource = 'system';
   Menu.setApplicationMenu(null);
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

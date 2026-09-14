@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import type { MovieSummary } from '@shared/types/index';
 import ContextMenu from '@/components/common/ContextMenu';
 import type { ContextMenuItem } from '@/components/common/ContextMenu';
 import Modal from '@/components/common/Modal';
-import { showToast } from '@/components/common/Toast';
+import { showErrorToast, showToast } from '@/components/common/Toast';
 import AppIcon from '@/components/common/AppIcon';
 
 interface MovieCardProps {
@@ -47,6 +47,31 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
+  /** 键盘打开菜单：Shift+F10 / 菜单键（Windows 约定，满足 WCAG 2.1.1 键盘可达） */
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      setContextMenu({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+    }
+  };
+
+  // 触摸长按等同于右键打开菜单（部分 WebView 不派发 contextmenu 事件）
+  const longPressTimer = useRef<number | null>(null);
+  const cancelLongPress = useCallback(() => {
+    if (longPressTimer.current !== null) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+  const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.pointerType !== 'touch') return;
+    const { clientX, clientY } = e;
+    cancelLongPress();
+    longPressTimer.current = window.setTimeout(() => setContextMenu({ x: clientX, y: clientY }), 550);
+  };
+  useEffect(() => cancelLongPress, [cancelLongPress]);
+
   async function handleStatusChange(status: '在看' | '已看完' | '想看') {
     try {
       const full = await api.movie.getById(movie.id);
@@ -58,7 +83,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
       showToast(`状态已更新为「${statusConfig[status]?.label || status}」`);
       onStatusChange?.();
     } catch (err: any) {
-      showToast(err.message || '操作失败');
+      showErrorToast(err.message || '操作失败');
     }
   }
 
@@ -74,7 +99,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
       showToast('已删除');
       onDelete?.(movie.id);
     } catch (err: any) {
-      showToast(err.message || '删除失败');
+      showErrorToast(err.message || '删除失败');
     }
   }
 
@@ -91,6 +116,13 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
       <button
         onClick={() => navigate(`/movie/${movie.id}`)}
         onContextMenu={handleContextMenu}
+        onKeyDown={handleCardKeyDown}
+        onPointerDown={handlePointerDown}
+        onPointerUp={cancelLongPress}
+        onPointerLeave={cancelLongPress}
+        onPointerCancel={cancelLongPress}
+        aria-haspopup="menu"
+        aria-label={`查看《${movie.title}》详情`}
         className="movie-card"
       >
         <div className="movie-poster">
@@ -101,7 +133,7 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
           {posterUrl ? (
             <img
               src={posterUrl}
-              alt={movie.title}
+              alt=""
               loading="lazy"
               decoding="async"
               onLoad={handleImgLoad}
