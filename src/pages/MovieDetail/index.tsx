@@ -39,8 +39,18 @@ export default function MovieDetail() {
   const [progressForm, setProgressForm] = useState({ episode: 1 });
   const [screenshots, setScreenshots] = useState<ScreenshotInfo[]>([]);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // 待二次确认的截图文件名；null 表示当前没有待确认的删除。
+  // 照片墙（缩略图与灯箱）的删除都先写到这里，由确认弹窗统一执行。
+  const [deletingScreenshotFile, setDeletingScreenshotFile] = useState<string | null>(null);
   const [editingTimestampFile, setEditingTimestampFile] = useState<string | null>(null);
   const [timestampForm, setTimestampForm] = useState({ episode: '1', hours: '', minutes: '', seconds: '' });
+
+  // 确认弹窗里回显待删除截图的时间戳：背景被遮罩压暗后，多张相似截图难以分辨，
+  // 只写"这张截图"容易删错。
+  const pendingDeleteShot = deletingScreenshotFile
+    ? screenshots.find((shot) => shot.filename === deletingScreenshotFile)
+    : undefined;
+  const pendingDeleteLabel = pendingDeleteShot ? formatTimestamp(pendingDeleteShot) : '';
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollPos, setScrollPos] = useState({ left: false, right: false });
   const [uploadHovered, setUploadHovered] = useState(false);
@@ -173,6 +183,10 @@ export default function MovieDetail() {
   useEffect(() => {
     if (lightboxIndex === null) return;
     const handleKey = (e: KeyboardEvent) => {
+      // 二次确认弹窗打开时，键盘完全交给弹窗处理：
+      // 否则 Esc 会在关掉弹窗的同时一并关掉灯箱，左右方向键还会在确认期间切换图片，
+      // 让"正在删除哪一张"变得含糊（弹窗的删除目标是打开时捕获的文件名）。
+      if (deletingScreenshotFile) return;
       if (e.key === 'Escape') setLightboxIndex(null);
       if (e.key === 'ArrowLeft' && lightboxIndex > 0) setLightboxIndex(lightboxIndex - 1);
       if (e.key === 'ArrowRight' && lightboxIndex < screenshots.length - 1) setLightboxIndex(lightboxIndex + 1);
@@ -183,7 +197,7 @@ export default function MovieDetail() {
       document.removeEventListener('keydown', handleKey);
       document.body.style.overflow = '';
     };
-  }, [lightboxIndex, screenshots.length]);
+  }, [lightboxIndex, screenshots.length, deletingScreenshotFile]);
 
   async function loadMovie(isActive: () => boolean = () => true) {
     if (!id) return;
@@ -732,9 +746,9 @@ export default function MovieDetail() {
                 </button>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); handleDeleteScreenshot(shot.filename); }}
+                  onClick={(e) => { e.stopPropagation(); setDeletingScreenshotFile(shot.filename); }}
                   className="hover-reveal screenshot-delete-btn absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center text-sm border-none cursor-pointer"
-                  title="删除截图" aria-label="删除截图"
+                  title="删除截图" aria-label={`删除第 ${i + 1} 张截图`}
                 >×</button>
               </div>
 
@@ -847,9 +861,9 @@ export default function MovieDetail() {
 
           {/* 删除按钮 */}
           <button
-            onClick={(e) => { e.stopPropagation(); handleDeleteScreenshot(screenshots[lightboxIndex].filename); }}
+            onClick={(e) => { e.stopPropagation(); setDeletingScreenshotFile(screenshots[lightboxIndex].filename); }}
             className="absolute top-5 right-[4.5rem] w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center border-none cursor-pointer hover:bg-white/20 transition-colors z-10"
-            title="删除" aria-label="删除截图"
+            title="删除" aria-label="删除当前截图"
           >
             <AppIcon name="trash" className="w-4 h-4" />
           </button>
@@ -1204,6 +1218,35 @@ export default function MovieDetail() {
         <div className="flex gap-3 justify-end">
           <button onClick={() => setShowDeleteConfirm(false)} className="btn btn-ghost">取消</button>
           <button onClick={handleDelete} className="btn btn-danger">删除</button>
+        </div>
+      </Modal>
+
+      {/* Delete Screenshot Confirm — 照片墙删除不可撤销，必须二次确认 */}
+      <Modal
+        open={Boolean(deletingScreenshotFile)}
+        onClose={() => setDeletingScreenshotFile(null)}
+        title="删除截图"
+        width="400px"
+      >
+        <p className="text-text-secondary text-sm mb-5">
+          {pendingDeleteLabel
+            ? `确定要删除「${pendingDeleteLabel}」这张截图吗？此操作不可撤销。`
+            : '确定要删除这张截图吗？此操作不可撤销。'}
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={() => setDeletingScreenshotFile(null)} className="btn btn-ghost">取消</button>
+          <button
+            onClick={() => {
+              const filename = deletingScreenshotFile;
+              if (!filename) return;
+              // 先关弹窗再执行：handleDeleteScreenshot 会按删除结果调整灯箱索引或关闭灯箱
+              setDeletingScreenshotFile(null);
+              handleDeleteScreenshot(filename);
+            }}
+            className="btn btn-danger"
+          >
+            删除
+          </button>
         </div>
       </Modal>
 
