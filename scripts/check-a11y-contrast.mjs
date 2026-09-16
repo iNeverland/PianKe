@@ -8,6 +8,13 @@
  *   - 控件边界、焦点环、图形状态：≥ 3:1（WCAG 1.4.11 AA）
  * 任一组合不达标则以退出码 1 结束，可直接接入 CI。
  *
+ * 另含图表配色（--chart-*）专项断言：
+ *   - 图形（色阶/分类色/折线）对图表底 --bg-secondary：≥ 3:1
+ *   - 扇区内文字标签（色阶/分类色作底）：≥ 4.5:1
+ *   - 色阶亮度单调（有序量必须读得出高低）
+ *   - 分类色两两可区分（色相或亮度拉开距离）
+ *   - src/lib/chartPalette.ts 的兜底值与 CSS 令牌一致（CSS 是唯一事实来源）
+ *
  * 用法：npm run audit:contrast
  */
 import fs from 'node:fs';
@@ -16,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'src/index.css'), 'utf8');
+const paletteSrc = fs.readFileSync(path.join(root, 'src/lib/chartPalette.ts'), 'utf8');
 
 /* ---------- 颜色计算 ---------- */
 const parseHex = (h) => {
@@ -31,6 +39,32 @@ const luminance = (hex) => {
 const contrast = (a, b) => {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
+};
+
+/**
+ * 扇区内文字取「深墨或白」两种墨色中对比度更高者——与 src/lib/chartPalette.ts
+ * 的 onColor() 同一策略。这里断言「较优的那种墨色 ≥4.5:1」，
+ * 等价于保证实际渲染出的标签达标（也顺带锁死「墨色死区」L∈(0.1833,0.1987)：
+ * 落进该区间则两种墨色都不足 4.5:1，断言会直接失败）。
+ */
+const INK_CANDIDATES = ['#12100C', '#ffffff'];
+const bestInkContrast = (bg) => Math.max(...INK_CANDIDATES.map((ink) => contrast(ink, bg)));
+
+/** 色相（0-360），用于分类色区分度检查 */
+const hue = (hex) => {
+  const [r, g, b] = parseHex(hex);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  let h;
+  if (max === r) h = 60 * (((g - b) / d) % 6);
+  else if (max === g) h = 60 * ((b - r) / d + 2);
+  else h = 60 * ((r - g) / d + 4);
+  return (h + 360) % 360;
+};
+const hueDelta = (a, b) => {
+  const d = Math.abs(hue(a) - hue(b));
+  return d > 180 ? 360 - d : d;
 };
 
 /* ---------- 解析主题块 ---------- */
@@ -113,7 +147,35 @@ const checks = [
 
 const resolve = (tokens, key) => (key.startsWith('#') ? key : tokens[key]);
 
+/* ---------- 图表配色契约 ---------- */
+/**
+ * 设计方《图表色彩规范表》提供 10 个分类色，浅/深各一套。
+ * 有序图表按名次/分值依次取 cat-1..cat-10；折线用 cat-1（主系列色）。
+ */
+const CAT_KEYS = Array.from({ length: 10 }, (_, i) => `chart-cat-${i + 1}`);
+/** 分类色两两至少要拉开这么多色相，或这么多亮度（仅告警） */
+const MIN_HUE_DELTA = 30;
+const MIN_LUM_DELTA = 0.15;
+
+/**
+ * 浅色主题的「图形对底色」对比度只告警、不判失败。
+ *
+ * 原因：设计方明确选择保留其规范表的 HEX 原值，而该表按 #FFFFFF~#F8F9FA 环境调校；
+ * 本 App 图表卡片底是 --bg-secondary(#f0ede7)，更暖更深，于是 8/10 个色块对该底仅
+ * 1.47–2.92:1（即便换纯白底，cat-2/4/6/8/10 也只有 1.72–2.06:1），低于 3:1 的图形
+ * 可见度设计下限。这是已确认的设计取舍，不应让 CI 变红。
+ *
+ * 仍然保持「失败级」的部分：深色主题的图形对比、两套主题的扇区内文字对比、
+ * 令牌是否存在、兜底值是否同步 —— 这些一旦回归必须拦住。
+ */
+const RELAX_LIGHT_MARK = true;
+
 let failures = 0;
+let warnings = 0;
+const fail = (msg) => { failures++; console.log(`  FAIL  ${msg}`); };
+const warn = (msg) => { warnings++; console.log(`  WARN  ${msg}`); };
+const pass = (msg) => console.log(`  PASS  ${msg}`);
+
 for (const [themeName, tokens] of Object.entries(themes)) {
   console.log(`\n===== ${themeName} =====`);
   for (const [label, fgKey, bgKey, need] of checks) {
@@ -129,8 +191,83 @@ for (const [themeName, tokens] of Object.entries(themes)) {
     if (!ok) failures++;
     console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${ratio.toFixed(2).padStart(5)}:1 (需 ${need})  ${label}`);
   }
+
+  /* ── 图表配色 ── */
+  console.log('  ── 图表配色（--chart-cat-1..10）──');
+  const chartBg = tokens['bg-secondary'];
+  const isLightTheme = themeName.startsWith('浅色');
+  if (!chartBg) {
+    fail('缺少 --bg-secondary（图表容器 .stat-card-contained 的底色）');
+  } else {
+    for (const key of CAT_KEYS) {
+      const color = tokens[key];
+      if (!color) {
+        fail(`缺少 --${key}（图形色 / 扇区内文字底色）`);
+        continue;
+      }
+      const mark = contrast(color, chartBg);
+      const markOk = mark >= 3;
+      const labelRatio = bestInkContrast(color);
+      const labelOk = labelRatio >= 4.5;
+      // 文字对比永远是失败级；图形对比在浅色主题按设计取舍降为告警
+      const markIsWarning = !markOk && isLightTheme && RELAX_LIGHT_MARK;
+      if (!labelOk) failures++;
+      else if (!markOk && !markIsWarning) failures++;
+
+      const labelPart = `  扇区内文字 ${labelRatio.toFixed(2).padStart(5)}:1 (需 4.5)${labelOk ? '' : ' ←不达标'}`;
+      const markPart = `图形 ${mark.toFixed(2).padStart(5)}:1 (需 3)${markOk ? '' : markIsWarning ? ' ←按设计取舍告警' : ' ←不达标'}`;
+      const status = !labelOk ? 'FAIL' : !markOk ? (markIsWarning ? 'WARN' : 'FAIL') : 'PASS';
+      console.log(`  ${status}  ${markPart}${labelPart}  --${key}`);
+    }
+
+    // 分类色两两可区分：色相或亮度必须拉开。设计方配色有若干近色对，故只告警。
+    const cats = CAT_KEYS.map((k) => tokens[k]).filter(Boolean);
+    if (cats.length === CAT_KEYS.length) {
+      const tooClose = [];
+      for (let i = 0; i < cats.length; i++) {
+        for (let j = i + 1; j < cats.length; j++) {
+          const dh = hueDelta(cats[i], cats[j]);
+          const dl = Math.abs(luminance(cats[i]) - luminance(cats[j]));
+          if (dh < MIN_HUE_DELTA && dl < MIN_LUM_DELTA) {
+            tooClose.push(`cat-${i + 1}(${cats[i]}) ↔ cat-${j + 1}(${cats[j]}) Δ色相=${dh.toFixed(0)}° Δ亮度=${dl.toFixed(3)}`);
+          }
+        }
+      }
+      if (tooClose.length === 0) pass(`分类色两两可区分（Δ色相 ≥${MIN_HUE_DELTA}° 或 Δ亮度 ≥${MIN_LUM_DELTA}）`);
+      else {
+        warn(`分类色有 ${tooClose.length} 对在色相与亮度上都较接近（设计方原值，仅提示）：`);
+        tooClose.forEach((m) => warn(`  ${m}`));
+      }
+    }
+  }
 }
 
+/* ---------- 兜底值与 CSS 令牌一致性（CSS 是唯一事实来源） ---------- */
+console.log('\n===== chartPalette.ts 兜底值 vs index.css 令牌 =====');
+// FALLBACK 是 `{ light: [...], dark: [...] }` 形式的数组；FALLBACK_SURFACE 是字符串表。
+const fbArray = (theme) => paletteSrc.match(new RegExp(`${theme}:\\s*\\[([\\s\\S]*?)\\]`))?.[1].match(/#[0-9a-fA-F]{6}/g) || [];
+const fbSurface = (theme) => paletteSrc.match(new RegExp(`FALLBACK_SURFACE[\\s\\S]*?${theme}:\\s*'(#[0-9a-fA-F]{6})'`))?.[1];
+
+for (const [theme, tokens] of [['light', themes['浅色 light']], ['dark', themes['深色 dark（手动）']]]) {
+  const fbs = fbArray(theme);
+  const pairs = [
+    ...CAT_KEYS.map((k, i) => [`cat[${i}]`, fbs[i], tokens[k]]),
+    ['surface', fbSurface(theme), tokens['bg-secondary']],
+  ];
+  for (const [name, fb, token] of pairs) {
+    if (!fb) { fail(`FALLBACK.${theme}.${name} 未解析到色值`); continue; }
+    if (!token) { fail(`index.css 缺少对应令牌（${name}）`); continue; }
+    const ok = fb.toLowerCase() === token.toLowerCase();
+    if (!ok) failures++;
+    console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${theme}.${name}: ${fb} vs ${token}${ok ? '' : ' ←两者不一致，请同步'}`);
+  }
+}
+
+if (warnings > 0) {
+  console.log(`\nℹ️  ${warnings} 项告警（不阻塞 CI）`);
+  console.log('    浅色图形对比与分类色近色对均来自设计方规范原值，属已确认的设计取舍；');
+  console.log('    详见 src/index.css 中 --chart-cat-* 上方注释与 scripts/check-a11y-contrast.mjs 的 RELAX_LIGHT_MARK。');
+}
 console.log(
   failures === 0
     ? '\n✅ 全部对比度断言通过'

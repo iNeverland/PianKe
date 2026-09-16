@@ -62,6 +62,24 @@
   --heat-l3-on: #1a1a1a;
   --heat-l4:    #C62828;
   --heat-l4-on: #ffffff;
+  /* 图表配色（浅色）—— 采用设计方《浅色模式图表色彩规范表》的 HEX 原值，未作改动。
+     chart-cat-1 兼作单系列折线主色（规范中 cat-1 的语义即「主系列色 / 核心对比」）。
+     有序图表按名次/分值「依次」取 cat-1..cat-10，超过 10 项时循环。
+     已知取舍（设计方明确选择保留原值）：本 App 图表卡片底色为 --bg-secondary(#f0ede7)，
+     比规范推荐环境 #FFFFFF~#F8F9FA 更暖更深，故下面 8 个色的色块对底色仅 1.47–2.92:1，
+     低于 3:1 的图形可见度设计下限；即便换成纯白底，cat-2/4/6/8/10 也仅 1.72–2.06:1。
+     扇区内文字标签不受影响，10 色全部 ≥4.5:1。
+     审计脚本据此对「浅色图形对比」只告警不判失败，其余断言仍为失败级。 */
+  --chart-cat-1:  #5B8FF9;  /* 科技蓝    Primary Blue */
+  --chart-cat-2:  #5AD8A6;  /* 薄荷绿    Mint Green */
+  --chart-cat-3:  #5D7092;  /* 雅致蓝灰  Slate Grey */
+  --chart-cat-4:  #F6BD16;  /* 琥珀暖黄  Amber Yellow */
+  --chart-cat-5:  #E8684A;  /* 珊瑚砖红  Coral Red */
+  --chart-cat-6:  #6DC8EC;  /* 清爽青蓝  Cyan Blue */
+  --chart-cat-7:  #9270CA;  /* 优雅洋紫  Violet Purple */
+  --chart-cat-8:  #FF9D4D;  /* 活力暖橙  Vibrant Orange */
+  --chart-cat-9:  #269A99;  /* 森林草绿  Grass Green */
+  --chart-cat-10: #BDC5D1;  /* 中性冷灰  Neutral Grey */
   --shadow-sm:  0 0.5px 1px rgba(0,0,0,0.02), 0 1px 3px rgba(0,0,0,0.03);
   --shadow-md:  0 1px 2px rgba(0,0,0,0.02), 0 2px 8px rgba(0,0,0,0.04);
   --shadow-lg:  0 2px 4px rgba(0,0,0,0.02), 0 4px 16px rgba(0,0,0,0.06);
@@ -127,6 +145,18 @@
   --heat-l3-on: #f0ede5;
   --heat-l4:    #b53030;
   --heat-l4-on: #ffffff;
+  /* 图表配色（深色）—— 采用设计方《深色模式图表色值》的 HEX 原值。
+     已实测：10 色对 --bg-secondary(#1a1a17) 图形对比 6.04–12.99:1、扇区内文字 6.58–14.15:1，全部达标。 */
+  --chart-cat-1:  #7AA8FC;  /* 电光冰蓝    Electric Blue */
+  --chart-cat-2:  #6DE3B4;  /* 荧光薄荷    Luminous Mint */
+  --chart-cat-3:  #8899B5;  /* 浅钛灰蓝    Titanium Blue */
+  --chart-cat-4:  #FAD355;  /* 明亮荧黄    Bright Canary */
+  --chart-cat-5:  #F08870;  /* 透亮霓红    Neon Coral */
+  --chart-cat-6:  #8BE0F8;  /* 亮碧天青    Vivid Cyan */
+  --chart-cat-7:  #B093E4;  /* 浅霓紫罗兰  Luminous Purple */
+  --chart-cat-8:  #FFB67A;  /* 柔和杏橙    Glowing Peach */
+  --chart-cat-9:  #4EC2C0;  /* 清亮翠青    Bright Emerald */
+  --chart-cat-10: #D8DFE8;  /* 银白浅灰    Silver Grey */
   --shadow-sm:  0 0.5px 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.1);
   --shadow-md:  0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.12);
   --shadow-lg:  0 2px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.18);
@@ -178,6 +208,17 @@
     --heat-l3-on: #f0ede5;
     --heat-l4:    #b53030;
     --heat-l4-on: #ffffff;
+    /* 图表配色（深色/跟随系统）：与手动深色保持一致 */
+    --chart-cat-1:  #7AA8FC;  /* 电光冰蓝    Electric Blue */
+    --chart-cat-2:  #6DE3B4;  /* 荧光薄荷    Luminous Mint */
+    --chart-cat-3:  #8899B5;  /* 浅钛灰蓝    Titanium Blue */
+    --chart-cat-4:  #FAD355;  /* 明亮荧黄    Bright Canary */
+    --chart-cat-5:  #F08870;  /* 透亮霓红    Neon Coral */
+    --chart-cat-6:  #8BE0F8;  /* 亮碧天青    Vivid Cyan */
+    --chart-cat-7:  #B093E4;  /* 浅霓紫罗兰  Luminous Purple */
+    --chart-cat-8:  #FFB67A;  /* 柔和杏橙    Glowing Peach */
+    --chart-cat-9:  #4EC2C0;  /* 清亮翠青    Bright Emerald */
+    --chart-cat-10: #D8DFE8;  /* 银白浅灰    Silver Grey */
     --shadow-sm:  0 0.5px 1px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.1);
     --shadow-md:  0 1px 2px rgba(0,0,0,0.06), 0 2px 8px rgba(0,0,0,0.12);
     --shadow-lg:  0 2px 4px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.18);

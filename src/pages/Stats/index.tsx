@@ -8,40 +8,25 @@ import type {
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
-
-// 图表配色 — 从橙色调出发的暖→冷序列
-const BAR_COLORS = [
-  '#EF7800', '#e8963a', '#d4a840', '#54a0d8',
-  '#5cb896', '#e06060', '#8b6cce',
-];
-
-const PIE_COLORS: Record<string, string> = {
-  '电影': '#EF7800',
-  '剧集': '#54a0d8',
-  '综艺': '#d4a840',
-  '纪录片': '#5cb896',
-  '动画': '#8b6cce',
-};
+import {
+  readChartPalette, onColor, withAlpha, seriesColorByIndex, categoryColor,
+  type ChartPalette,
+} from '@/lib/chartPalette';
 
 function EmptyHint() {
   return <p className="text-text-muted text-xs py-6 text-center">暂无数据</p>;
 }
 
-/**
- * 按系列底色选前景色：深墨或白，保证图表标签对底色 ≥4.5:1（WCAG 1.4.3）。
- * 原先按主题（而非按底色）取 #1a1a1a/#fff，浅色主题下白字压 #d4a840 只有 2.22:1。
- */
-function onColor(bg: string): string {
-  const raw = bg.replace('#', '');
-  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
-  const [r, g, b] = [0, 2, 4]
-    .map((i) => parseInt(full.slice(i, i + 2), 16) / 255)
-    .map((c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)));
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.42 ? '#12100C' : '#FFFFFF';
+interface ChartTheme {
+  text: string;
+  muted: string;
+  border: string;
+  elevated: string;
+  isDark: boolean;
+  palette: ChartPalette;
 }
 
-function useChartTheme() {
+function useChartTheme(): ChartTheme {
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const observer = new MutationObserver(() => setVersion((value) => value + 1));
@@ -63,9 +48,65 @@ function useChartTheme() {
       text: style.getPropertyValue('--text-secondary').trim() || '#6b6b6b',
       muted: style.getPropertyValue('--text-muted').trim() || '#9e9d99',
       border: style.getPropertyValue('--border').trim() || '#e8e7e3',
+      // tooltip 底色走 --bg-elevated 令牌，不再硬编码（原先深色写死 #2a2a24，
+      // 而该值不等于任何主题令牌，深色 --bg-elevated 实为 #242420）。
+      elevated: style.getPropertyValue('--bg-elevated').trim() || (isDark ? '#242420' : '#ffffff'),
       isDark,
+      palette: readChartPalette(style, isDark),
     };
   }, [version]);
+}
+
+/**
+ * 排名横条图（类型分布 / 影视国家）。
+ *
+ * 颜色按设计方规范「按名次依次取 cat-1..cat-10」：第 1 名拿主系列色 cat-1，
+ * 依次向下；超过 10 项时循环（与规范的「依次」一致）。
+ *
+ * 取色用「真实名次」而非数组下标：颜色跟着条目走，因此不依赖 yAxis 的
+ * reverse/inverse 视觉方向。items 由 API 按数量降序给出，故名次 = 原始下标。
+ */
+function buildRankedBarOption(items: { label: string; value: number }[], theme: ChartTheme) {
+  const ranked = [...items].reverse();
+  return {
+    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
+    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
+    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
+    aria: { enabled: true, decal: { show: false } },
+    tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
+    xAxis: { type: 'value' as const, show: false },
+    grid: { left: 0, right: 40, top: 4, bottom: 0, containLabel: true },
+    yAxis: {
+      type: 'category' as const,
+      data: ranked.map((item) => item.label),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { color: theme.text, fontSize: 12, fontWeight: 500 },
+      inverse: true,
+    },
+    series: [{
+      type: 'bar',
+      data: ranked.map((item, i) => ({
+        value: item.value,
+        itemStyle: {
+          // items.length - 1 - i 即该条目在「按数量降序」原数组中的下标 = 名次
+          color: seriesColorByIndex(theme.palette.cat, items.length - 1 - i),
+          borderRadius: [0, 3, 3, 0],
+        },
+      })),
+      label: {
+        show: true,
+        position: 'right' as const,
+        color: theme.muted,
+        fontSize: 11,
+        fontWeight: 500,
+        formatter: '{c}',
+      },
+      barMaxWidth: 18,
+      barMinWidth: 12,
+      barCategoryGap: '25%',
+    }],
+  };
 }
 
 export default function Stats() {
@@ -99,83 +140,15 @@ export default function Stats() {
   const topGenres = byGenre;
   const topCountries = byCountry;
 
-  const genreOption = useMemo(() => ({
-    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
-    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
-    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
-    aria: { enabled: true, decal: { show: false } },
-    tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-    xAxis: { type: 'value' as const, show: false },
-    grid: { left: 0, right: 40, top: 4, bottom: 0, containLabel: true },
-    yAxis: {
-      type: 'category' as const,
-      data: topGenres.map(g => g.genre).reverse(),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: theme.text, fontSize: 12, fontWeight: 500 },
-      inverse: true,
-    },
-    series: [{
-      type: 'bar',
-      data: [...topGenres].reverse().map((g, i) => ({
-        value: g.count,
-        itemStyle: {
-          color: BAR_COLORS[i % BAR_COLORS.length],
-          borderRadius: [0, 3, 3, 0],
-        },
-      })),
-      label: {
-        show: true,
-        position: 'right',
-        color: theme.muted,
-        fontSize: 11,
-        fontWeight: 500,
-        formatter: '{c}',
-      },
-      barMaxWidth: 18,
-      barMinWidth: 12,
-      barCategoryGap: '25%',
-    }],
-  }), [topGenres, theme]);
+  const genreOption = useMemo(
+    () => buildRankedBarOption(topGenres.map((g) => ({ label: g.genre, value: g.count })), theme),
+    [topGenres, theme],
+  );
 
-  const countryOption = useMemo(() => ({
-    // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
-    // 纹理（decal）显式关闭：ECharts 在 aria 场景下可能默认带斜纹，这里按设计反馈去掉；
-    // 系列区分改由轴标签/图例文案与数值标签承担，不是"仅靠颜色"。
-    aria: { enabled: true, decal: { show: false } },
-    tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
-    xAxis: { type: 'value' as const, show: false },
-    grid: { left: 0, right: 40, top: 4, bottom: 0, containLabel: true },
-    yAxis: {
-      type: 'category' as const,
-      data: topCountries.map(c => c.country).reverse(),
-      axisLine: { show: false },
-      axisTick: { show: false },
-      axisLabel: { color: theme.text, fontSize: 12, fontWeight: 500 },
-      inverse: true,
-    },
-    series: [{
-      type: 'bar',
-      data: [...topCountries].reverse().map((c, i) => ({
-        value: c.count,
-        itemStyle: {
-          color: BAR_COLORS[i % BAR_COLORS.length],
-          borderRadius: [0, 3, 3, 0],
-        },
-      })),
-      label: {
-        show: true,
-        position: 'right',
-        color: theme.muted,
-        fontSize: 11,
-        fontWeight: 500,
-        formatter: '{c}',
-      },
-      barMaxWidth: 18,
-      barMinWidth: 12,
-      barCategoryGap: '25%',
-    }],
-  }), [topCountries, theme]);
+  const countryOption = useMemo(
+    () => buildRankedBarOption(topCountries.map((c) => ({ label: c.country, value: c.count })), theme),
+    [topCountries, theme],
+  );
 
   // 月度趋势：最近12个月的折线图
   const trendMonths = useMemo(() => {
@@ -204,7 +177,7 @@ export default function Stats() {
     aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'axis' as const,
-      backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
+      backgroundColor: theme.elevated,
       borderColor: theme.border,
       textStyle: { color: theme.text, fontSize: 12 },
       formatter: (params: { name: string; value: number }[]) => {
@@ -239,10 +212,13 @@ export default function Stats() {
       smooth: false,
       symbol: 'circle',
       symbolSize: 5,
-      lineStyle: { color: '#EF7800', width: 2.5 },
+      lineStyle: { color: theme.palette.line, width: 2.5 },
       itemStyle: {
-        color: '#EF7800',
-        borderColor: onColor('#EF7800'),
+        color: theme.palette.line,
+        // 描边取图表容器底色（--bg-secondary），让端点呈"镂空"halo 与卡片分离。
+        // 原先用 onColor(line) —— 那是"文字压在色块上"的取法，对图形端点语义不对，
+        // 而且深墨色的环压在浅色卡片上会变成一圈深色描边。
+        borderColor: theme.palette.surface,
         borderWidth: 2,
       },
       areaStyle: {
@@ -250,24 +226,32 @@ export default function Stats() {
           type: 'linear' as const,
           x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [
-            { offset: 0, color: 'rgba(239, 120, 0, 0.18)' },
-            { offset: 1, color: 'rgba(239, 120, 0, 0.01)' },
+            // 面积渐变由主色派生，换主题时不会残留写死的橙色（原为 rgba(239,120,0,…)）
+            { offset: 0, color: withAlpha(theme.palette.line, 0.18) },
+            { offset: 1, color: withAlpha(theme.palette.line, 0.01) },
           ],
         },
       },
     }],
   }), [trendMonths, trendCountMap, theme]);
 
-  // 评分分布：彩色渐变
-  const ratingPieData = diaryRatingDist
-    .filter(d => d.count > 0)
-    .map((d, i) => ({
-      name: '★'.repeat(d.stars / 2),
-      value: d.count,
-      itemStyle: { color: BAR_COLORS[i % BAR_COLORS.length] },
-      // 标签前景按所在扇区底色选择（浅色主题下的黄/橙扇区必须用深墨字）
-      label: { color: onColor(BAR_COLORS[i % BAR_COLORS.length]) },
-    }));
+  // 评分分布：颜色按设计方规范「按分值依次取 cat-1..cat-10」，
+  // 数据本身按分值升序（2/4/6/8/10），依下标顺序取色即得到 2分→cat-1 … 10分→cat-5。
+  const ratingPieData = useMemo(() => {
+    const items = diaryRatingDist.filter((d) => d.count > 0);
+    return items.map((d, i) => {
+      const color = seriesColorByIndex(theme.palette.cat, i);
+      return {
+        // 用服务端已给的 label（如「★★★ 6分」）而不是 `'★'.repeat(stars/2)`：
+        // 图例需要把分数读出来，才看得出颜色与分值的对应关系。
+        name: d.label,
+        value: d.count,
+        itemStyle: { color },
+        // 标签前景按所在扇区底色选择（WCAG 1.4.3，由 onColor 取两种墨色中更优者）
+        label: { color: onColor(color) },
+      };
+    });
+  }, [diaryRatingDist, theme]);
 
   const ratingPieOption = useMemo(() => ({
     // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
@@ -276,7 +260,7 @@ export default function Stats() {
     aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'item' as const,
-      backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
+      backgroundColor: theme.elevated,
       borderColor: theme.border,
       textStyle: { color: theme.text, fontSize: 12 },
       formatter: '{b}: {c} 部 ({d}%)',
@@ -296,7 +280,8 @@ export default function Stats() {
       label: {
         show: true,
         position: 'inside',
-        color: onColor('#EF7800'),
+        // 前景色由每个扇区的 datum.label.color 按各自底色给出（见 ratingPieData / typePieData）；
+        // 此处不再写死 onColor('#EF7800')，那会把橙色的前景色误用到所有扇区上。
         fontSize: 10,
         fontWeight: 600,
         formatter: '{c}',
@@ -307,14 +292,19 @@ export default function Stats() {
     }],
   }), [ratingPieData, theme]);
 
-  const typePieData = byType
+  // 影视类型：媒体类型是并列类别（名义量），用分类色板；
+  // 颜色按类型语义固定绑定，不随条数或排序漂移。
+  const typePieData = useMemo(() => byType
     .filter(t => t.count > 0)
-    .map(t => ({
-      name: t.type,
-      value: t.count,
-      itemStyle: { color: PIE_COLORS[t.type] || '#999' },
-      label: { color: onColor(PIE_COLORS[t.type] || '#999') },
-    }));
+    .map(t => {
+      const color = categoryColor(theme.palette.cat, t.type, theme.muted);
+      return {
+        name: t.type,
+        value: t.count,
+        itemStyle: { color },
+        label: { color: onColor(color) },
+      };
+    }), [byType, theme]);
 
   const typePieOption = useMemo(() => ({
     // ECharts 内置无障碍：自动生成图表描述（读屏可读）。
@@ -323,7 +313,7 @@ export default function Stats() {
     aria: { enabled: true, decal: { show: false } },
     tooltip: {
       trigger: 'item' as const,
-      backgroundColor: theme.isDark ? '#2a2a24' : '#fff',
+      backgroundColor: theme.elevated,
       borderColor: theme.border,
       textStyle: { color: theme.text, fontSize: 12 },
       formatter: '{b}: {c} 部 ({d}%)',
@@ -343,7 +333,8 @@ export default function Stats() {
       label: {
         show: true,
         position: 'inside',
-        color: onColor('#EF7800'),
+        // 前景色由每个扇区的 datum.label.color 按各自底色给出（见 ratingPieData / typePieData）；
+        // 此处不再写死 onColor('#EF7800')，那会把橙色的前景色误用到所有扇区上。
         fontSize: 10,
         fontWeight: 600,
         formatter: '{c}',
