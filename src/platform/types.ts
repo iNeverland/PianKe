@@ -11,8 +11,8 @@ import type {
  * 平台抽象层的统一接口。
  *
  * 只包含「原生系统能力」——窗口、主题、自动更新、截图、TMDB 代理。业务数据
- * （影视/日记/追剧/想看/统计）不在此列，它们由 src/lib/api.ts 的 Proxy 在登录后
- * 路由到 cloudApi（直连 PocketBase），天然跨平台。
+ * （影视/日记/追剧/想看/统计）不在此列：云端是唯一权威数据源，渲染进程统一经
+ * src/lib/api.ts 使用 cloudApi（直连 PocketBase），天然跨平台。
  *
  * React UI 只依赖本接口，不直接依赖 window.electronAPI 或 Capacitor，从而让同一套
  * UI 跑在 Electron（桌面）与 Capacitor（Android）上。

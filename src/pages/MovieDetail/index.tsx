@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { platform } from '@/platform';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
+import { countWatched, groupSegments, nextPeriodLabel, renamePeriod } from '@/lib/segmentGroups';
 import type { MovieMetadata, DiaryEntry, WatchRecord, ScreenshotInfo } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
@@ -30,6 +31,12 @@ export default function MovieDetail() {
   const [localSegs, setLocalSegs] = useState<string[] | null>(null);
   const localSegsRef = useRef(localSegs);
   localSegsRef.current = localSegs;
+  /** 正在改名（点铅笔）的分段下标；为 null 时一律显示为可点击的方块。 */
+  const [editingSegment, setEditingSegment] = useState<number | null>(null);
+  /** 正在编辑期数的分组（draft 为输入中的字符串，提交时才写回）。 */
+  const [editingPeriod, setEditingPeriod] = useState<{ id: string; draft: string } | null>(null);
+  /** 综艺进度默认折叠，只展示期号最大的那一期，避免期数过多把卡片撑得很长。 */
+  const [segmentExpanded, setSegmentExpanded] = useState(false);
   const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
   const [deletingDiaryEntryId, setDeletingDiaryEntryId] = useState<string | null>(null);
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
@@ -903,71 +910,178 @@ export default function MovieDetail() {
         </div>
       )}
 
-      {/* Progress Card — 综艺：自定义标签块 */}
+      {/* Progress Card — 综艺：按期分组的进度方块 */}
       {movie.mediaType === '综艺' && localSegs && (() => {
         const segs = localSegs;
         const filled = segs.filter(s => s.trim()).length;
-        const saveSegs = async (newSegs: string[]) => {
-          const updated = await api.movie.update(id!, {
-            ...movie,
-            progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length },
-          });
-          setMovie(updated);
-          void refreshDiary();
+        const groups = groupSegments(segs);
+        const commitSegs = (newSegs: string[]) => {
+          setLocalSegs(newSegs);
+          void (async () => {
+            const updated = await api.movie.update(id!, {
+              ...movie,
+              progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length },
+            });
+            setMovie(updated);
+            void refreshDiary();
+          })();
         };
+        // 新增分段插在所属期的末尾，这样在该期里加一行不会跑到别的期去。
+        const insertAfter = (index: number) => {
+          const next = [...segs];
+          next.splice(index + 1, 0, '');
+          setLocalSegs(next);
+        };
+        /**
+         * “添加一期”：直接生成下一期（按现有最大期号 +1），并立刻成组。
+         *
+         * 名称带 `上` 后缀，否则解析不出期号会落进「其他」组。注意本模型里
+         * 「已看」等价于「标签非空」，因此新一期初始显示为已看——这是已知代价，
+         * 想要“已排期但未看”需要改数据模型。
+         */
+        const appendNextPeriod = () => {
+          const label = nextPeriodLabel(segs);
+          setLocalSegs([...segs, label]);
+          showToast(`已添加「${label}」，可点击方块改名`);
+        };
+
+        // 折叠时只保留“期号最大”的那一期（按期号比较，而非列表位置）。
+        const maxPeriod = groups.reduce((max, group) => (
+          group.sortKey !== Number.MAX_SAFE_INTEGER && group.sortKey > max ? group.sortKey : max
+        ), Number.NEGATIVE_INFINITY);
+        const collapsible = groups.length > 1;
+        const visibleGroups = (collapsible && !segmentExpanded)
+          ? groups.filter(group => group.sortKey === maxPeriod)
+          : groups;
+
         return (
           <div className="stat-card-contained mt-9">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-baseline gap-2">
                 <span className="text-sm font-semibold text-text-primary">追剧进度</span>
                 <span className="text-xs text-text-muted">{filled}/{segs.length} 已看</span>
               </div>
+              {collapsible && (
+                <button
+                  type="button"
+                  className="segment-toggle"
+                  onClick={() => setSegmentExpanded(prev => !prev)}
+                  aria-expanded={segmentExpanded}
+                  aria-label={segmentExpanded ? '仅显示最新一期' : '显示全部期数'}
+                >
+                  {segmentExpanded ? '收起' : `展开全部（${groups.length} 期）`}
+                  <AppIcon name={segmentExpanded ? 'chevronUp' : 'chevronDown'} />
+                </button>
+              )}
             </div>
-            <div className="flex flex-wrap gap-2 mb-4">
-              {segs.map((label, i) => (
-                <div key={i} className="relative group">
-                  <input
-                    type="text"
-                    value={label}
-                    onChange={(e) => {
-                      const newSegs = [...segs];
-                      newSegs[i] = e.target.value;
-                      setLocalSegs(newSegs);
-                    }}
-                    onBlur={(e) => {
-                      const val = e.target.value;
-                      if (val !== (movie.progress!.segments?.[i] || '')) {
-                        const newSegs = [...localSegsRef.current!];
-                        newSegs[i] = val;
-                        void saveSegs(newSegs);
-                      }
-                    }}
-                    className={`min-w-[48px] px-3.5 h-7 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded transition-colors ${label.trim() ? 'bg-accent border-accent text-on-accent' : 'bg-bg-elevated border-border text-text-muted'}`}
-                    style={{ width: getSegmentInputWidth(label) }}
-                    placeholder={`#${i + 1}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newSegs = segs.filter((_, j) => j !== i);
-                      if (newSegs.length === 0) newSegs.push('');
-                      setLocalSegs(newSegs);
-                      void saveSegs(newSegs);
-                    }}
-                    aria-label={`删除第 ${i + 1} 个分段`}
-                    className={`hover-reveal absolute top-0 right-0.5 text-xs border-none cursor-pointer bg-transparent leading-none ${label.trim() ? 'text-on-accent' : 'text-red'}`}
-                  >×</button>
+
+            <div className="segment-groups">
+              {visibleGroups.map(group => (
+                <div className="segment-group" key={group.id}>
+                  <div className="segment-group-head">
+                    {group.sortKey !== Number.MAX_SAFE_INTEGER ? (
+                      /* 期数可直接编辑：改动会同步重命名该期所有行（见 lib/segmentGroups.renamePeriod） */
+                      <span className="segment-group-name segment-period-edit">
+                        第
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="segment-period-input"
+                          value={editingPeriod?.id === group.id ? editingPeriod.draft : group.sortKey}
+                          /* 宽度随位数增长，避免两位期号被截断 */
+                          style={{ width: `${1.1 + 0.65 * ((editingPeriod?.id === group.id ? editingPeriod.draft : String(group.sortKey)).length || 1)}em` }}
+                          onFocus={() => setEditingPeriod({ id: group.id, draft: String(group.sortKey) })}
+                          onChange={(e) => setEditingPeriod({ id: group.id, draft: e.target.value.replace(/[^0-9]/g, '') })}
+                          onBlur={() => {
+                            const next = Number(editingPeriod?.draft);
+                            setEditingPeriod(null);
+                            if (!Number.isFinite(next) || next <= 0 || next === group.sortKey) return;
+                            commitSegs(renamePeriod(segs, group.sortKey, next));
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setEditingPeriod(null); e.currentTarget.blur(); } }}
+                          aria-label={`第 ${group.sortKey} 期，可直接修改期数`}
+                        />
+                        期
+                      </span>
+                    ) : (
+                      <span className="segment-group-name">{group.title}</span>
+                    )}
+                    <span className="segment-group-line" />
+                    <span className="segment-group-count">{countWatched(group)}/{group.items.length}</span>
+                  </div>
+                  <div className="segment-row">
+                    {group.items.map(item => (
+                      editingSegment === item.index ? (
+                        <input
+                          key={item.index}
+                          type="text"
+                          autoFocus
+                          value={segs[item.index]}
+                          onChange={(e) => {
+                            const next = [...segs];
+                            next[item.index] = e.target.value;
+                            setLocalSegs(next);
+                          }}
+                          onBlur={(e) => {
+                            const value = e.target.value;
+                            setEditingSegment(null);
+                            // 清空即删除该分段；全部删光时保留一个空位，避免出现空的进度卡。
+                            if (value.trim() === '') {
+                              const next = [...segs];
+                              next.splice(item.index, 1);
+                              if (next.length === 0) next.push('');
+                              commitSegs(next);
+                              return;
+                            }
+                            if (value !== (movie.progress!.segments?.[item.index] ?? '')) {
+                              const next = [...localSegsRef.current!];
+                              next[item.index] = value;
+                              commitSegs(next);
+                            }
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Escape') setEditingSegment(null); }}
+                          className="segment-edit-input"
+                          style={{ width: getSegmentInputWidth(segs[item.index]) }}
+                        />
+                      ) : (
+                        <span className="segment-cell" key={item.index}>
+                          <button
+                            type="button"
+                            className={`segment-item ${item.watched ? 'is-watched' : ''}`}
+                            aria-label={item.watched ? `改名「${item.raw}」` : `命名第 ${item.index + 1} 个分段`}
+                            onClick={() => setEditingSegment(item.index)}
+                          >
+                            {item.watched ? item.label : `#${item.index + 1}`}
+                          </button>
+                          <button
+                            type="button"
+                            className="segment-remove"
+                            onClick={() => {
+                              const next = [...segs];
+                              next.splice(item.index, 1);
+                              if (next.length === 0) next.push('');
+                              commitSegs(next);
+                            }}
+                            aria-label={`删除 ${item.raw || `第 ${item.index + 1} 个分段`}`}
+                          ><AppIcon name="close" /></button>
+                        </span>
+                      )
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => insertAfter(group.items[group.items.length - 1].index)}
+                      className="segment-add"
+                      aria-label={`在 ${group.title} 末尾加一行`}
+                    >+</button>
+                  </div>
                 </div>
               ))}
-              <button
-                onClick={() => {
-                  const newSegs = [...segs, ''];
-                  setLocalSegs(newSegs);
-                  void saveSegs(newSegs);
-                }}
-                className="w-7 h-7 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent-text transition-colors flex items-center justify-center text-sm bg-transparent cursor-pointer"
-                title="添加条目"
-              >+</button>
+            </div>
+
+            <div className="segment-actions">
+              <button type="button" onClick={appendNextPeriod} className="segment-add-text">
+                <span aria-hidden="true">+</span> 添加一期
+              </button>
             </div>
           </div>
         );

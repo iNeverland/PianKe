@@ -279,7 +279,7 @@ export default function Settings() {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">导出 Excel</div>
-            <div className="settings-row-desc">导出影视清单、自动观影日记和手动追剧记录，可选择 .xlsx 或 .xls；不嵌入海报、截图等图片</div>
+            <div className="settings-row-desc">导出影视清单、自动观影日记和手动追剧记录为 .xlsx；不嵌入海报、截图等图片</div>
           </div>
           <button className="btn btn-primary btn-sm" onClick={handleExportExcel} disabled={exportingExcel}>
             {exportingExcel ? '导出中…' : '导出'}

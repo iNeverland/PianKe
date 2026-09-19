@@ -86,14 +86,6 @@ export interface WatchRecord {
   review?: string;
 }
 
-// 库信息
-export interface LibraryInfo {
-  name: string;
-  version: number;
-  createdAt: string;
-  movieCount: number;
-}
-
 // 统计概览
 export interface StatsOverview {
   totalMovies: number;
@@ -153,13 +145,6 @@ export interface StatsDashboard {
 export interface DiaryCalendarEntry {
   date: string;   // YYYY-MM-DD
   count: number;
-}
-
-// 搜索过滤条件
-export interface SearchFilters {
-  year?: string;      // releaseDate 以此年份开头
-  minRating?: number; // 个人评分 >= 此值
-  maxRating?: number; // 个人评分 <= 此值
 }
 
 // 截图信息
@@ -258,57 +243,10 @@ export interface AppUpdateState {
   checkSource?: UpdateCheckSource;
 }
 
-// IPC 通道名称
+// IPC 通道名称。
+// 业务数据（影视/日记/追剧/想看/统计）不走 IPC：云端是唯一权威数据源，渲染进程直接经
+// src/lib/cloudApi.ts 访问。此块由 vite 构建插件同步生成到 electron/preload/main.cjs。
 export const IPC_CHANNELS = {
-  // 影视管理
-  MOVIE_LIST: 'movie:list',
-  MOVIE_GET_BY_ID: 'movie:getById',
-  MOVIE_CREATE: 'movie:create',
-  MOVIE_UPDATE: 'movie:update',
-  MOVIE_DELETE: 'movie:delete',
-  MOVIE_SEARCH: 'movie:search',
-  MOVIE_UPDATE_PROGRESS: 'movie:updateProgress',
-  MOVIE_ADD_TAG: 'movie:addTag',
-  MOVIE_REMOVE_TAG: 'movie:removeTag',
-  MOVIE_GET_ALL_TAGS: 'movie:getAllTags',
-  MOVIE_GET_POSTER_URL: 'movie:getPosterUrl',
-  MOVIE_EXPORT_EXCEL: 'movie:exportExcel',
-  MOVIE_LIST_SCREENSHOTS: 'movie:listScreenshots',
-  MOVIE_ADD_SCREENSHOT: 'movie:addScreenshot',
-  MOVIE_DELETE_SCREENSHOT: 'movie:deleteScreenshot',
-  MOVIE_GET_SCREENSHOT: 'movie:getScreenshot',
-  MOVIE_GET_SCREENSHOT_THUMBNAIL: 'movie:getScreenshotThumbnail',
-  MOVIE_UPDATE_SCREENSHOT_INFO: 'movie:updateScreenshotInfo',
-
-  // 自动观影日记
-  DIARY_GET_BY_MOVIE: 'diary:getByMovie',
-  DIARY_DELETE: 'diary:delete',
-  DIARY_GET_TIMELINE: 'diary:getTimeline',
-
-  // 手动追剧记录
-  WATCH_RECORD_GET_BY_MOVIE: 'watchRecord:getByMovie',
-  WATCH_RECORD_ADD: 'watchRecord:add',
-  WATCH_RECORD_UPDATE: 'watchRecord:update',
-  WATCH_RECORD_DELETE: 'watchRecord:delete',
-
-  // 想看清单
-  WATCHLIST_LIST: 'watchlist:list',
-  WATCHLIST_MARK_AS_WATCHED: 'watchlist:markAsWatched',
-  WATCHLIST_MARK_AS_WATCHING: 'watchlist:markAsWatching',
-
-  // 统计
-  STATS_DASHBOARD: 'stats:dashboard',
-  STATS_OVERVIEW: 'stats:overview',
-  STATS_BY_MEDIA_TYPE: 'stats:byMediaType',
-  STATS_BY_YEAR: 'stats:byYear',
-  STATS_BY_GENRE: 'stats:byGenre',
-  STATS_BY_RATING: 'stats:byRating',
-  STATS_BY_COUNTRY: 'stats:byCountry',
-  STATS_DIARY_RATING_DIST: 'stats:diaryRatingDist',
-  STATS_MONTHLY_TREND: 'stats:monthlyTrend',
-  STATS_MONTH_SUMMARY: 'stats:monthSummary',
-  STATS_DIARY_CALENDAR: 'stats:diaryCalendar',
-
   // TMDB 代理（经自建服务器）
   TMDB_SEARCH: 'tmdb:search',
   TMDB_GET_DETAILS: 'tmdb:getDetails',

@@ -1,19 +1,41 @@
 import { cloudApi } from './cloudApi';
-import { isCloudAuthenticated } from './pocketbase';
 import { platform } from '@/platform';
+import type { Platform } from '@/platform';
 
-// 登录后由 PocketBase 接管的业务分组。这些调用不经过 Electron IPC，天然跨平台。
-const CLOUD_BUSINESS_PROPS = new Set(['library', 'movie', 'diary', 'watchRecord', 'watchlist', 'stats']);
+/**
+ * 渲染进程实际使用的原生能力集合。
+ *
+ * 业务数据（影视/日记/追剧/想看/统计）不在此列：云端是唯一权威数据源，且 App 在未
+ * 登录时只渲染登录页（见 App.tsx），因此业务命名空间恒由 cloudApi 提供。
+ */
+type NativeApi = Pick<Platform, 'platform' | 'setTheme' | 'window' | 'updater' | 'tmdb'> &
+  Pick<
+    Platform,
+    | 'onScreenshotTrigger'
+    | 'registerShortcut'
+    | 'unregisterShortcut'
+    | 'showScreenToast'
+    | 'getDesktopSources'
+    | 'getPrimaryScreenSnapshot'
+    | 'startCrop'
+    | 'onScreenshotCropped'
+  >;
 
-// 创建代理：登录后业务数据由 PocketBase 接管；窗口、截图裁剪、TMDB 与更新等
-// 原生能力统一走平台抽象层（Electron 实现 / Capacitor 占位）。
-const api = new Proxy({} as typeof window.electronAPI, {
-  get(_target, prop: string) {
+const nativeApi: NativeApi = platform;
+
+/**
+ * 业务数据统一走 cloudApi（直连 PocketBase），原生能力统一走平台抽象层
+ * （Electron 实现 / Capacitor 占位）。
+ *
+ * 这里刻意不用在运行时按登录态分发的 Proxy：未登录时 App 只渲染登录页，登录后
+ * 业务命名空间必然由云端接管，任何本地回退分支都是不可达的死代码。用交叉类型
+ * 静态地表达这一事实，写错属性会在类型检查阶段直接报错。
+ */
+const api: typeof cloudApi & NativeApi = new Proxy({} as typeof cloudApi & NativeApi, {
+  get(_target, prop: string | symbol) {
     if (prop === 'then' || prop === 'toJSON') return undefined;
-    if (isCloudAuthenticated() && CLOUD_BUSINESS_PROPS.has(prop)) {
-      return cloudApi[prop as keyof typeof cloudApi];
-    }
-    return (platform as unknown as Record<string, unknown>)[prop];
+    if (prop in cloudApi) return cloudApi[prop as keyof typeof cloudApi];
+    return nativeApi[prop as keyof NativeApi];
   },
 });
 

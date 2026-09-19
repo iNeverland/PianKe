@@ -102,64 +102,10 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('screenshot:cropped', handler);
   },
 
-  movie: {
-    list: (filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST, filters),
-    getById: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_BY_ID, id),
-    create: (data) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_CREATE, data),
-    update: (id, data) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE, id, data),
-    delete: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE, id),
-    search: (query, filters) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_SEARCH, query, filters),
-    updateProgress: (id, episode) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_PROGRESS, id, episode),
-    addTag: (id, tag) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_ADD_TAG, id, tag),
-    removeTag: (id, tag) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_REMOVE_TAG, id, tag),
-    getAllTags: () => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_ALL_TAGS),
-    getPosterUrl: (id, thumb) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_POSTER_URL, id, thumb),
-    exportExcel: () => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_EXPORT_EXCEL),
-    listScreenshots: (id) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_LIST_SCREENSHOTS, id),
-    addScreenshot: (id, base64Data, ext) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_ADD_SCREENSHOT, id, base64Data, ext),
-    deleteScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_DELETE_SCREENSHOT, id, filename),
-    getScreenshot: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_SCREENSHOT, id, filename),
-    getScreenshotThumbnail: (id, filename) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_GET_SCREENSHOT_THUMBNAIL, id, filename),
-    updateScreenshotInfo: (id, filename, info) => ipcRenderer.invoke(IPC_CHANNELS.MOVIE_UPDATE_SCREENSHOT_INFO, id, filename, info),
-  },
-
   tmdb: {
     search: (query) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_SEARCH, query),
     getDetails: (mediaType, id) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_GET_DETAILS, mediaType, id),
     getPoster: (posterPath) => ipcRenderer.invoke(IPC_CHANNELS.TMDB_GET_POSTER, posterPath),
-  },
-
-  diary: {
-    getByMovie: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_BY_MOVIE, movieId),
-    delete: (movieId, entryId) => ipcRenderer.invoke(IPC_CHANNELS.DIARY_DELETE, movieId, entryId),
-    getTimeline: () => ipcRenderer.invoke(IPC_CHANNELS.DIARY_GET_TIMELINE),
-  },
-
-  watchRecord: {
-    getByMovie: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_GET_BY_MOVIE, movieId),
-    add: (movieId, data) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_ADD, movieId, data),
-    update: (movieId, entryId, data) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_UPDATE, movieId, entryId, data),
-    delete: (movieId, entryId) => ipcRenderer.invoke(IPC_CHANNELS.WATCH_RECORD_DELETE, movieId, entryId),
-  },
-
-  watchlist: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_LIST),
-    markAsWatched: (movieId, entryData) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_MARK_AS_WATCHED, movieId, entryData),
-    markAsWatching: (movieId) => ipcRenderer.invoke(IPC_CHANNELS.WATCHLIST_MARK_AS_WATCHING, movieId),
-  },
-
-  stats: {
-    dashboard: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_DASHBOARD),
-    overview: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_OVERVIEW),
-    byMediaType: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_MEDIA_TYPE),
-    byYear: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_YEAR),
-    byGenre: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_GENRE),
-    byRating: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_RATING),
-    byCountry: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_BY_COUNTRY),
-    diaryRatingDist: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_DIARY_RATING_DIST),
-    monthlyTrend: () => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTHLY_TREND),
-    monthSummary: (year, month) => ipcRenderer.invoke(IPC_CHANNELS.STATS_MONTH_SUMMARY, year, month),
-    diaryCalendar: (days) => ipcRenderer.invoke(IPC_CHANNELS.STATS_DIARY_CALENDAR, days),
   },
 };
 

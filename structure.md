@@ -1,6 +1,6 @@
 # PianKe（片刻）项目结构
 
-> 生成于当前仓库状态（v2.0.7）。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
+> 生成于当前仓库状态（v2.0.8）。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
 
 ## 1. 项目概述
 
@@ -11,7 +11,7 @@ PianKe 是一款用于收藏影视、记录观看过程和沉淀观后感的**�
 - 云端数据：PocketBase（认证、数据、私有文件）
 - 离线缓存：IndexedDB（数据快照、海报、截图、头像）
 - 影视元数据：TMDB + 自建 Node.js 代理（Caddy/Nginx 反代）
-- 图表：ECharts；校验：Zod；Excel 导出：SheetJS；图片处理：Sharp
+- 图表：ECharts；Excel 导出：SheetJS（渲染进程按需加载）；图片处理：Capacitor Assets（构建期）
 - 打包发布：electron-builder + GitHub Actions + 自建更新服务器
 
 **核心架构理念**：云端账户是唯一权威数据源。登录后数据同步到个人 PocketBase 空间；最近一次同步的数据与媒体缓存到本机 IndexedDB，弱网/离线时仍可浏览。
@@ -22,7 +22,7 @@ PianKe 是一款用于收藏影视、记录观看过程和沉淀观后感的**�
 PianKe/
 ├── electron/                  # Electron 主进程（Node 环境）
 ├── src/                       # React 渲染进程（含 platform/ 平台抽象层）
-├── shared/                    # 主/渲染进程共享的类型、校验与工具
+├── shared/                    # 主/渲染进程共享的类型与工具
 ├── android/                   # Capacitor Android 工程（Android Studio 打开）
 ├── server/                    # 服务端：PocketBase 迁移/hook + TMDB 代理
 ├── docs/                      # 架构与发布文档
@@ -53,16 +53,11 @@ PianKe/
 ```text
 electron/
 ├── main.ts                    # 入口：单实例锁、CSP、主题、注册所有 handler、启动窗口
-├── ipc.ts                     # registerAllHandlers()：聚合注册 7 个业务模块的 IPC handler
+├── ipc.ts                     # registerAllHandlers()：聚合注册原生能力 handler（TMDB、更新）
 ├── errors/
 │   ├── AppError.ts            # 统一错误类型
 │   └── errorCodes.ts          # 错误码定义
-├── modules/                   # 业务模块，每个 = handler.ts（IPC 边界）+ service.ts（业务规则/文件读写）
-│   ├── movie/                 # 影视 CRUD、进度、标签、海报、截图、Excel 导出
-│   ├── diary/                 # 自动观影日记（进度/状态变更自动留痕）
-│   ├── watchRecord/           # 手动追剧记录（用户评分与感想）
-│   ├── watchlist/             # 想看清单
-│   ├── stats/                 # 统计仪表盘（类型/年份/类型/国家/评分/月度趋势）
+├── modules/                   # 原生能力模块，每个 = handler.ts（IPC 边界）+ service.ts（业务规则）
 │   ├── screenshot/            # 全局截图快捷键、裁剪窗口、影片选择器、屏幕 Toast
 │   │   ├── cropWindow.ts          # 裁剪窗口
 │   │   ├── moviePickerWindow.ts   # 截图后影片选择器窗口
@@ -74,18 +69,14 @@ electron/
 │   ├── main.cjs               # ⚠️ contextBridge 暴露 electronAPI；IPC 通道块由构建插件从 shared/types/index.ts 自动同步，勿手改
 │   ├── crop.cjs               # 裁剪窗口 preload
 │   └── movie-picker.cjs       # 影片选择器窗口 preload
-├── store/
-│   └── dataStore.ts           # 内存数据缓存（旧本地库架构遗留，含海报 LRU 缓存）
 ├── windows/
 │   ├── mainWindow.ts          # 主窗口
 │   └── splashWindow.ts        # 启动闪屏窗口
 ├── types/
-│   └── sharp.d.ts             # sharp 类型声明
+│   └── sharp.d.ts             # sharp 类型声明（构建期外部依赖占位）
 └── utils/
-    ├── atomicWrite.ts         # 原子写入（本次更新新增）
-    ├── paths.ts               # 资源库路径与影视目录命名的唯一入口
-    ├── thumbnail.ts           # 缩略图生成
-    └── writeQueue.ts          # 写队列串行化
+    ├── senderGuard.ts         # IPC 调用来源校验
+    └── writeQueue.ts          # 写队列串行化（更新器状态落盘）
 ```
 
 ### 3.2 src/ —— 渲染进程（React）
@@ -139,8 +130,6 @@ src/
 shared/
 ├── types/
 │   └── index.ts               # ⭐ 全部业务类型 + IPC_CHANNELS 通道常量（唯一来源，preload 自动同步）
-├── schemas/
-│   └── index.ts               # Zod 校验 Schema
 └── utils/
     └── date.ts                # 日期工具（本地日期/时间字符串）
 ```
@@ -199,33 +188,33 @@ resources/
 ```text
 React 页面与组件 (src/)
   → lib/api.ts
-  → 平台抽象层 (src/platform/) → Electron preload bridge (window.electronAPI) / Capacitor
-      业务数据：云端直接访问 (cloudApi → PocketBase)
-  → IPC handler (electron/modules/<feature>/handler.ts)
+      业务数据：cloudApi → PocketBase（直连，不经 IPC）
+      原生能力：平台抽象层 (src/platform/) → Electron preload bridge (window.electronAPI) / Capacitor
+  → IPC handler (electron/modules/<feature>/handler.ts)   # 仅 tmdb / updater / window
   → 主进程 service (electron/modules/<feature>/service.ts)
   → 云端 PocketBase / 本地离线缓存 (IndexedDB)
 ```
 
 设计约束（见 docs/architecture.md）：
 
-- `shared/` 仅保存主进程和渲染进程共用的类型、Schema、日期工具和 IPC 契约。
+- `shared/` 仅保存主进程和渲染进程共用的类型、日期工具和 IPC 契约。
 - `src/assets/brand/` 是应用 Logo 和资源库文件夹图标的唯一来源；构建时分别交给 Vite 和 electron-builder 使用。
-- `electron/modules/<feature>/handler.ts` 只负责 IPC 边界；业务规则和文件读写只放在对应 `service.ts`。
-- `electron/utils/paths.ts` 是资源库路径和影视目录命名的唯一入口。
+- `electron/modules/<feature>/handler.ts` 只负责 IPC 边界；业务规则只放在对应 `service.ts`。业务数据不设 IPC 通道，统一由渲染进程直连 PocketBase。
 - `src/components/` 只放可复用 UI；`src/pages/` 只组织路由页面和页面级状态。
 
 ## 5. 核心机制
 
-### 5.1 双数据源路由（src/lib/api.ts）
+### 5.1 单一数据源路由（src/lib/api.ts）
 
-`api` 是一个 **Proxy**：
+`api` 是一个 **Proxy**，类型为 `typeof cloudApi & NativeApi`：
 
-- 登录后（`isCloudAuthenticated()`），`library / movie / diary / watchRecord / watchlist / stats` 六组调用自动路由到 `cloudApi`（直连 PocketBase）。
-- 其余能力（窗口控制、截图裁剪、TMDB、更新）始终走 Electron 安全 IPC 通道。
+- 业务数据（`library / movie / diary / watchRecord / watchlist / stats`）恒由 `cloudApi` 提供，直连 PocketBase。
+- 原生能力（窗口控制、截图裁剪、TMDB、更新）恒由 `src/platform/` 平台抽象层提供。
+- 由于 App 在未登录时只渲染登录页（`App.tsx`），不存在「登录后走云端、未登录走本地」的回退分支；类型上用交叉类型静态表达，写错属性会在类型检查阶段报错。
 
 ### 5.2 IPC 通道单一来源（shared/types/index.ts）
 
-- `IPC_CHANNELS` 常量只在 `shared/types/index.ts` 定义。
+- `IPC_CHANNELS` 常量只在 `shared/types/index.ts` 定义，目前仅含 TMDB 与应用更新通道（业务数据不走 IPC）。
 - `vite.config.ts` 的 `copyPreloadPlugin` 在构建时自动把该块同步进 `electron/preload/main.cjs`（`dist-electron/preload.cjs`），避免两端不一致。
 
 ### 5.3 云端数据与离线缓存（src/lib/cloudApi.ts）
@@ -273,7 +262,7 @@ React 页面与组件 (src/)
 
 ## 7. 版本状态
 
-- 当前版本：v2.0.7
-- 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源，本地库及其迁移能力已移除。
+- 当前版本：v2.0.8
+- 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源。v2 收尾时已把主进程侧的本地数据层（`modules/{movie,diary,watchRecord,watchlist,stats}`、`electron/store`、`utils/{paths,thumbnail,atomicWrite}`、`shared/schemas`、对应 IPC 通道与 `uuid`/`zod` 依赖）整体移除，主进程只保留原生能力。
 - 跨平台改造（第一阶段）：新增 `src/platform/` 平台抽象层，收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `platform` 访问，业务数据仍由 `cloudApi` 直连 PocketBase，为后续 Capacitor Android 端复用同一套 React UI 打基础。
 - 跨平台改造（第二阶段）：安装 Capacitor 8（@capacitor/core + @capacitor/cli + @capacitor/android），新增 `capacitor.config.ts`（appId=com.pianke.app、webDir=dist）与 `android/` 工程；Electron 构建流程保持不变，`npm run build` 产物可直接被 `npx cap sync android` 复用。

@@ -972,6 +972,147 @@ function sortByMomentDesc<T extends { watchDate: string; watchTime?: string }>(e
 }
 
 /**
+ * 把云端数据组装成导出工作簿：影视清单 / 观影日记 / 追剧记录三张表，表名、列顺序、
+ * 列宽与自动筛选保持稳定，便于与历史导出的文件互相替换。
+ */
+function buildExcelWorkbook(
+  movies: MovieMetadata[],
+  diaryByMovie: Map<string, DiaryEntry[]>,
+  watchRecordsByMovie: Map<string, WatchRecord[]>,
+  screenshotsByMovie: Map<string, ScreenshotInfo[]>,
+  XLSX: typeof import('xlsx'),
+) {
+  const workbook = XLSX.utils.book_new();
+
+  const movieRows = movies.map((movie) => [
+    movie.id,
+    movie.title,
+    movie.titleOriginal || '',
+    movie.mediaType,
+    movie.status,
+    movie.director,
+    movie.cast.join(' / '),
+    movie.releaseDate,
+    movie.country,
+    movie.genre.join(' / '),
+    movie.tags.join(' / '),
+    movie.runtime,
+    movie.rating,
+    movie.progress?.episode ?? '',
+    movie.progress?.totalEpisodes ?? '',
+    movie.rewatchCount ?? 0,
+    movie.createdAt || '',
+    movie.synopsis || '',
+  ]);
+  const movieSheet = XLSX.utils.aoa_to_sheet([
+    ['ID', '标题', '原始标题', '类型', '状态', '导演', '主演', '上映日期', '国家', '类型标签', '自定义标签', '片长（分钟）', '公众评分', '当前集数', '总集数', '重看次数', '添加时间', '简介'],
+    ...movieRows,
+  ]);
+  movieSheet['!cols'] = [
+    { wch: 38 }, { wch: 20 }, { wch: 24 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 28 }, { wch: 12 }, { wch: 14 },
+    { wch: 24 }, { wch: 24 }, { wch: 13 }, { wch: 11 }, { wch: 11 }, { wch: 10 }, { wch: 11 }, { wch: 22 }, { wch: 48 },
+  ];
+  movieSheet['!autofilter'] = { ref: `A1:R${Math.max(movieRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, movieSheet, '影视清单');
+
+  const diaryRows = movies.flatMap((movie) => (diaryByMovie.get(movie.id) || []).map((entry) => [
+    movie.id,
+    movie.title,
+    entry.watchDate,
+    entry.watchTime || '',
+    entry.rating,
+    entry.kind,
+    entry.review || '',
+    (screenshotsByMovie.get(movie.id) || []).length,
+  ]));
+  const diarySheet = XLSX.utils.aoa_to_sheet([
+    ['影视 ID', '影视标题', '记录日期', '记录时间', '评分', '记录类型', '详情', '关联图片数'],
+    ...diaryRows,
+  ]);
+  diarySheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 12 }, { wch: 60 }, { wch: 12 }];
+  diarySheet['!autofilter'] = { ref: `A1:H${Math.max(diaryRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, diarySheet, '观影日记');
+
+  const watchRecordRows = movies.flatMap((movie) => (watchRecordsByMovie.get(movie.id) || []).map((entry) => [
+    movie.id,
+    movie.title,
+    entry.watchDate,
+    entry.watchTime || '',
+    entry.rating,
+    entry.review || '',
+  ]));
+  const watchRecordSheet = XLSX.utils.aoa_to_sheet([
+    ['影视 ID', '影视标题', '观看日期', '观看时间', '个人评分', '短评'],
+    ...watchRecordRows,
+  ]);
+  watchRecordSheet['!cols'] = [{ wch: 38 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 11 }, { wch: 60 }];
+  watchRecordSheet['!autofilter'] = { ref: `A1:F${Math.max(watchRecordRows.length + 1, 1)}` };
+  XLSX.utils.book_append_sheet(workbook, watchRecordSheet, '追剧记录');
+
+  return { workbook, movieCount: movies.length, diaryCount: diaryRows.length, watchRecordCount: watchRecordRows.length };
+}
+
+/** 浏览器侧落盘：xlsx 在渲染进程只能生成字节流，下载交给浏览器/WebView 处理。 */
+async function downloadSpreadsheet(data: ArrayBuffer | Uint8Array, fileName: string): Promise<void> {
+  // xlsx 的 write(type:'array') 返回 ArrayBuffer，旧版 Node 构建可能返回 Buffer 或普通数组，
+  // 统一成 Uint8Array 后再交给 Blob，避免把数字数组当成文本写进文件。
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (bytes.byteLength === 0) throw new Error('生成 Excel 内容为空，请稍后重试');
+
+  const blob = new Blob([bytes.slice().buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.rel = 'noopener';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    // 立即回收会让部分 WebView 取消尚未开始的下载，稍后再释放。
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+}
+
+/** 云端导出：xlsx 体积较大，仅在用户真正点击导出时按需加载，不进入首屏包。 */
+async function exportCloudMoviesToExcel(): Promise<{ filePath?: string; fileName: string; movieCount: number; diaryCount: number; watchRecordCount: number }> {
+  // 云端只能通过快照拿到简介、导演等完整字段；loadSnapshot 在离线时回退到本地副本，
+  // 因此断网也能导出最近一次同步的数据，而不是直接失败。
+  const [{ movies, diaries, watchRecords, screenshots }, XLSX] = await Promise.all([
+    loadSnapshot(),
+    import('xlsx'),
+  ]);
+
+  const diaryByMovie = new Map<string, DiaryEntry[]>();
+  for (const record of diaries) {
+    const movieId = stringField(record, 'movie');
+    diaryByMovie.set(movieId, [...(diaryByMovie.get(movieId) || []), toDiary(record)]);
+  }
+  const watchRecordsByMovie = new Map<string, WatchRecord[]>();
+  for (const record of watchRecords) {
+    const movieId = stringField(record, 'movie');
+    watchRecordsByMovie.set(movieId, [...(watchRecordsByMovie.get(movieId) || []), toWatchRecord(record)]);
+  }
+
+  const { workbook, movieCount, diaryCount, watchRecordCount } = buildExcelWorkbook(
+    movies.map(toMetadata),
+    diaryByMovie,
+    watchRecordsByMovie,
+    screenshotsToMap(screenshots),
+    XLSX,
+  );
+
+  const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer | Uint8Array;
+  const fileName = `PianKe-影视数据-${getLocalDateStr()}.xlsx`;
+  await downloadSpreadsheet(data, fileName);
+  return { fileName, movieCount, diaryCount, watchRecordCount };
+}
+
+/**
  * 综艺进度日记的 review 里保存的是当次「已完成的分段列表」快照。期数很多时，列表会
  * 越来越长，导致日记页把历史全部期数都显示出来。这里按观看时间顺序做差分：
  * 每条只保留相对前一条「最新添加」的分段，实现“只显示最新添加的期数”的效果，
@@ -1155,7 +1296,7 @@ export const cloudApi = {
     removeTag: async (id: string, tag: string): Promise<MovieMetadata> => { const movie = await cloudApi.movie.getById(id); return cloudApi.movie.update(id, { tags: movie.tags.filter((item) => item !== tag) }); },
     getAllTags: async (): Promise<string[]> => [...new Set((await summaries()).flatMap((movie) => movie.tags))].sort((a, b) => a.localeCompare(b, 'zh')),
     getPosterUrl: async (id: string, thumb?: boolean): Promise<string | null> => fileUrl(await getMovieRecord(id), 'poster', thumb ? POSTER_THUMB_SIZE : undefined),
-    exportExcel: async () => { throw new Error('云端数据导出将在下一版提供；当前服务器已执行每日备份。'); },
+    exportExcel: exportCloudMoviesToExcel,
     listScreenshots: async (movieId: string): Promise<ScreenshotInfo[]> => (await getScreenshotsForMovie(movieId)).map((record) => ({ filename: record.id, createdAt: stringField(record, 'created') || undefined, episode: typeof record.episode === 'number' ? record.episode : undefined, hours: typeof record.hours === 'number' ? record.hours : undefined, minutes: typeof record.minutes === 'number' ? record.minutes : undefined, seconds: typeof record.seconds === 'number' ? record.seconds : undefined })),
     addScreenshot: async (movieId: string, base64: string, _ext: string): Promise<ScreenshotInfo[]> => {
       // 上传前先在本地压缩大图，减少上传体积与服务器缩略图生成时间

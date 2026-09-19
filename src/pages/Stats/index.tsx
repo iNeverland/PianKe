@@ -358,32 +358,34 @@ export default function Stats() {
     <div>
       <Header title="数据统计" subtitle="观影数据可视化" showAdd={false} />
 
-      {/* 概览卡片 */}
+      {/* 概览卡片：图标尺寸由 .stat-card-icon 的 font-size 统一控制，
+          AppIcon 的两种渲染形态（内联 SVG / .app-icon-source）都取 1em，
+          因此这里不再逐个指定 w/h，避免混用导致四个图标大小不一。 */}
       <div className="stats-row mb-5">
         <div className="stat-card">
           <div className="stat-card-icon">
-            <AppIcon name="stats" className="w-5 h-5" />
+            <AppIcon name="stats" />
           </div>
           <div className="stat-value">{overview?.totalMovies ?? 0}</div>
           <div className="stat-label">影视总数</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <AppIcon name="clock" className="w-5 h-5" />
+            <AppIcon name="clock" />
           </div>
           <div className="stat-value">{overview?.totalHours ?? 0}<span className="stat-unit">h</span></div>
           <div className="stat-label">观影时长</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <AppIcon name="star" className="w-5 h-5" />
+            <AppIcon name="star" />
           </div>
           <div className="stat-value">{overview?.avgPersonalRating != null ? <>{overview.avgPersonalRating}<span className="stat-unit">/10</span></> : '—'}</div>
           <div className="stat-label">平均评分</div>
         </div>
         <div className="stat-card">
           <div className="stat-card-icon">
-            <AppIcon name="diary" className="w-5 h-5" />
+            <AppIcon name="diary" />
           </div>
           <div className="stat-value">{overview?.mostWatchedGenre?.slice(0, 2).join(' / ') || '—'}</div>
           <div className="stat-label">最爱类型</div>

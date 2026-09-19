@@ -149,7 +149,6 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
 
           {/* Top-right rating badge */}
           <div className="poster-rating" style={posterUrl && !imgLoaded ? { opacity: 0 } : undefined}>
-            <AppIcon name="star" />
             {movie.rating.toFixed(1)}
           </div>
 

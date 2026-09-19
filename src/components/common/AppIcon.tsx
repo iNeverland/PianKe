@@ -75,7 +75,10 @@ export default function AppIcon({ name, title, className, ...props }: AppIconPro
   const content = (() => {
     switch (name) {
       case 'folder': return <path {...shared} d="M20 58a20 20 0 0 1 20-20h43l19 20h58a20 20 0 0 1 20 20v74a20 20 0 0 1-20 20H40a20 20 0 0 1-20-20V58Zm18 16v78c0 1 1 2 2 2h120c1 0 2-1 2-2V78c0-1-1-2-2-2H94L75 58H40c-1 0-2 1-2 2v14Z" />;
-      case 'star': return <path {...shared} d="m100 18 25 52 57 8-41 40 10 57-51-28-51 28 10-57-41-40 57-8 25-52Z" />;
+      // 与 assets/icons 下用户提供的图标保持同一视觉语言：细描边、圆角连接、随尺寸缩放
+      // （不可用 non-scaling-stroke，否则小尺寸下描边不会跟着变细而糊成一团）。
+      // 外接半径 96/100 对齐源图标的墨迹占比，避免同样 24px 下显得偏小。
+      case 'star': return <path fill="none" stroke="currentColor" strokeWidth="12.5" d="M100 4l27.8 56.3 62.2 9-45 43.9 10.6 61.9L100 145.7 44.4 175.1 55 113.2 10 69.3l62.2-9L100 4Z" />;
       case 'screen': return <path {...shared} d="M30 28h140a20 20 0 0 1 20 20v89a20 20 0 0 1-20 20h-54v17h23a9 9 0 1 1 0 18H61a9 9 0 1 1 0-18h23v-17H30a20 20 0 0 1-20-20V48a20 20 0 0 1 20-20Zm0 18c-1 0-2 1-2 2v89c0 1 1 2 2 2h140c1 0 2-1 2-2V48c0-1-1-2-2-2H30Z" />;
       case 'chevronLeft': return <path {...shared} d="M122 35 57 100l65 65 13-13-52-52 52-52-13-13Z" />;
       case 'chevronRight': return <path {...shared} d="m78 35-13 13 52 52-52 52 13 13 65-65L78 35Z" />;

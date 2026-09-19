@@ -25,10 +25,14 @@
   --bg-sidebar-item: #262626;
   --border:        #e5e0d5;
   --border-light:  #f0ede7;
-  --text-primary:  #1a1a1a;
-  --text-secondary:#3d3d3d;
-  --text-muted:    #6b6b6b;
-  --text-sidebar:  #6b6b6b;
+  /* 文字中性色取"暖灰"而非纯黑灰：纯黑级对比度会让大面积浅色页面显得沉重。
+     取值对最浅的实际底色 --bg-secondary #f0ede7 分别达 7.37 / 5.93 / 4.59:1。
+     说明：3:1 只是 WCAG 对大字与 UI 组件的最低线，小号正文贴线会发虚，
+     故主/次文字各留一档余量（约为底线的 2.4× / 2.0×），兼顾轻盈与可读。 */
+  --text-primary:  #514b44;
+  --text-secondary:#5f594f;
+  --text-muted:    #6f6a63;
+  --text-sidebar:  #6f6a63;
   --text-sidebar-active: #ffffff;
   --accent:        #EF7800;
   /* 语义前景：文字/小图标用，对 bg-deep 4.81:1、对 #fff 5.34:1（WCAG 1.4.3） */
@@ -42,9 +46,11 @@
   --border-strong: #C4BDAD;
   /* 输入类控件的 3:1 边界：对 #f5f3ed 3.18:1 / 对 #fff 3.52:1 */
   --border-control: #8F8878;
-  --accent-dim:    rgba(239, 120, 0, 0.08);
-  --accent-glow:   rgba(239, 120, 0, 0.15);
-  --accent-glow-strong: rgba(239, 120, 0, 0.25);
+  /* 以下三档由主色派生：换 --accent 时自动跟随，不再散落写死 rgba(239,120,0,…)。
+     transparent 终止色与 rgba 的视觉结果一致（均为同色同 alpha 的叠加）。 */
+  --accent-dim:    color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-glow:   color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-glow-strong: color-mix(in srgb, var(--accent) 25%, transparent);
   --red:            #B42318;
   --red-solid:      #C0392B;
   --green:          #177245;
@@ -125,9 +131,9 @@
   /* 控件/弹窗边界（深色）：收敛的暗发丝线；输入类用 --border-control 保 3:1 */
   --border-strong: #4F4F46;
   --border-control: #6E6E62;
-  --accent-dim:    rgba(239, 120, 0, 0.1);
-  --accent-glow:   rgba(239, 120, 0, 0.18);
-  --accent-glow-strong: rgba(239, 120, 0, 0.3);
+  --accent-dim:    color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-glow:   color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow-strong: color-mix(in srgb, var(--accent) 30%, transparent);
   --red:            #FF7A6B;
   --red-solid:      #B3352B;
   --green:          #4ED07C;
@@ -188,9 +194,9 @@
     /* 控件/弹窗边界（深色）：收敛的暗发丝线；输入类用 --border-control 保 3:1 */
   --border-strong: #4F4F46;
   --border-control: #6E6E62;
-    --accent-dim:    rgba(239, 120, 0, 0.1);
-    --accent-glow:   rgba(239, 120, 0, 0.18);
-    --accent-glow-strong: rgba(239, 120, 0, 0.3);
+    --accent-dim:    color-mix(in srgb, var(--accent) 10%, transparent);
+    --accent-glow:   color-mix(in srgb, var(--accent) 18%, transparent);
+    --accent-glow-strong: color-mix(in srgb, var(--accent) 30%, transparent);
     --red:            #FF7A6B;
     --red-solid:      #B3352B;
     --green:          #4ED07C;
@@ -711,8 +717,9 @@ select:focus-visible,
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 浅色玻璃上使用深色图标 */
-  color: rgba(0, 0, 0, 0.38);
+  /* 浅色玻璃上使用暖灰图标（原为纯黑 rgba(0,0,0,.38)，在浅色页面上偏死黑）。
+     取比 --text-muted 更轻的一档，维持"非激活态"应有的视觉层级，对白玻璃 4.68:1。 */
+  color: #7a7369;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   font-size: 0;
@@ -723,8 +730,8 @@ select:focus-visible,
 }
 
 .nav-item:hover {
-  color: rgba(0, 0, 0, 0.7);
-  background: rgba(0, 0, 0, 0.05);
+  color: #5f594f;
+  background: rgba(95, 89, 79, 0.07);
   transform: scale(1.08);
 }
 
@@ -740,7 +747,9 @@ select:focus-visible,
   position: absolute;
   inset: -3px;
   border-radius: 17px;
-  border: 1.5px solid rgba(239, 120, 0, 0.25);
+  /* 原为写死的 rgba(239,120,0,0.25)：改用与主色同源的 --accent-glow-strong，
+     浅色下数值完全等价（0.25），深色下会跟随深色主题的 0.30。 */
+  border: 1.5px solid var(--accent-glow-strong);
   opacity: 0;
   transition: opacity 0.3s ease;
 }
@@ -1060,10 +1069,21 @@ select:focus-visible,
   transform: translateY(-1px);
 }
 
+/* 图标尺寸的唯一控制点：AppIcon 有两条渲染路径——内联 SVG（.app-icon）与包裹原始
+   SVG 的 .app-icon-source。两者都取 1em，且这里用后代选择器直接给出尺寸，
+   不依赖与 Tailwind 工具类的层叠顺序（两者特异性同为 0,1,0，谁后加载谁生效，
+   曾导致同组图标一大一小）。 */
 .stat-card-icon {
+  font-size: 24px;
+  line-height: 1;
   color: var(--accent-text);
   opacity: 0.6;
   margin-bottom: 10px;
+}
+.stat-card-icon .app-icon,
+.stat-card-icon .app-icon-source {
+  width: 1em;
+  height: 1em;
 }
 
 /* 色条（保留兼容） */
@@ -1171,6 +1191,227 @@ select:focus-visible,
   padding: 24px;
   border: 1px solid var(--border-light);
 }
+
+/* ═══ 综艺追剧进度：按期分组的方块 ═══
+   标签本身带「先导片 / 第N期 / 加更上」结构，展示层把它抽成小标题（见 lib/segmentGroups.ts），
+   方块内只留后缀。已看 / 未看靠"实心浅橙"与"虚线空框"区分，不再用饱和橙铺满整块。 */
+.segment-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.segment-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.segment-group-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* 期数可编辑：只让数字成为输入框，"第" / "期" 保持为文字说明 */
+.segment-period-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+.segment-period-input {
+  min-width: 1.2em;
+  padding: 0 1px;
+  border: 0;
+  border-bottom: 1px dashed var(--border-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.segment-period-input:hover {
+  border-bottom-color: var(--accent);
+  color: var(--accent-text);
+}
+.segment-period-input:focus {
+  border-bottom: 1px solid var(--accent-text);
+  color: var(--accent-text);
+}
+.segment-group-line {
+  flex: 1;
+  height: 1px;
+  min-width: 12px;
+  background: var(--border);
+}
+.segment-group-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.segment-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 方块 + 右上角删除叉号：叉号只在 hover/focus 时出现，避免 30 个方块都挂一个图标 */
+.segment-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.segment-remove {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: 1px solid var(--red);
+  border-radius: 50%;
+  background: #fff;   /* 明确实心白底，不依赖主题变量 */
+  color: var(--red);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.segment-remove svg,
+.segment-remove .app-icon-source { width: 8px; height: 8px; }
+.segment-cell:hover .segment-remove,
+.segment-remove:focus-visible { opacity: 1; }
+/* hover：实心白底 + 红色叉号，并轻微放大、加一圈阴影，让它明显"浮"在方块之上。
+   用 !important 与 transform 双重保证：即便有别的规则或缩放/抗锯齿干扰，
+   也不会再被看成"透明底"。 */
+.segment-remove:hover {
+  background: #fff !important;
+  color: var(--red);
+  transform: scale(1.15);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.28);
+}
+
+/* 分段方块：未看 = 虚线空框；已看 = 浅橙底 + 强调色文字（对 accent-dim 4.92:1） */
+.segment-item {
+  min-width: 44px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-family: var(--font-body);
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.segment-item:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.segment-item.is-watched {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.segment-item.is-watched:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.segment-edit-input {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-family: var(--font-body);
+  text-align: center;
+  outline: none;
+}
+
+/* 期内的「+」：与未看方块同尺寸，虚线语言一致 */
+.segment-add {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.segment-add:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.segment-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+.segment-add-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.segment-add-text:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* 折叠/展开：右上角文字按钮 + 箭头，跟随主题的次级色。
+   高度对齐全站小尺寸控件的 28px 基准（与 .segment-item / .btn-sm 一致）。 */
+.segment-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-family: var(--font-body);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.segment-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.segment-toggle svg,
+.segment-toggle .app-icon-source { width: 11px; height: 11px; }
 
 /* ═══ 追剧进度（剧集）═══ */
 
@@ -1297,11 +1538,9 @@ select:focus-visible,
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: var(--radius); padding: 2px 6px;
   font-size: 0.68rem; font-weight: 600; color: #fff;
-  display: flex; align-items: center; gap: 2px;
+  display: flex; align-items: center;
   font-family: var(--font-display); z-index: 2;
 }
-.movie-poster .poster-rating svg,
-.movie-poster .poster-rating .app-icon-source { width: 8px; height: 8px; }
 
 .movie-poster .poster-status {
   position: absolute; top: 6px; left: 6px;
