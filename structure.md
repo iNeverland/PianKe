@@ -1,6 +1,6 @@
 # PianKe（片刻）项目结构
 
-> 生成于当前仓库状态（v2.0.8）。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
+> 生成于当前仓库状态（v2.0.9）。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
 
 ## 1. 项目概述
 
@@ -229,12 +229,25 @@ React 页面与组件 (src/)
 | 集合 | 内容 |
 |---|---|
 | `users` | 账户、昵称、头像（私有集合，文件 URL 需临时 token） |
-| `movies` | 影视资料、海报、状态（想看/在看/已看完）、进度（剧集 episode/totalEpisodes；综艺 segments 标签） |
+| `movies` | 影视资料、海报、状态（想看/在看/已看完）、进度（剧集 episode/totalEpisodes；综艺 segments 为 `{ period, label }[]`，期号与分段名分开存） |
 | `diary_entries` | 系统自动写入的进度/状态变更日记 |
 | `watch_records` | 用户手动撰写的观看记录（评分、感想） |
 | `screenshots` | 照片墙图片、集数与时间点信息 |
 
 所有业务集合按 `owner` 与当前登录账户隔离；`ownership.pb.js` hook 强制数据所有权。
+
+### 5.4.1 综艺分段模型（`Progress.segments`）
+
+综艺进度不再用自由文本标签表达期号，而是结构化的 `{ period, label }[]`：
+
+- **期号是数据**：`{ period: '第 3 期', label: '加更上' }`。详情页按期分组、日记页显示、
+  Excel 导出都直接读 `period`，不再靠解析文本推断期号。
+- **旧数据自动升级**：读取口（`cloudApi.segmentsField`）对历史 `string[]` 标签就地升级——
+  解析文本里的期号，解析不出的按索引距离就近归入相邻期（与升级前详情页的分组结果一致）；
+  登录后由 `migrateVarietySegments` 一次性写回云端（按账号打标记、幂等）。
+- **日记自带期号**：新写入的综艺进度日记存「第 3 期加更上」这样的完整文本；
+  更早写入的、只带分段名的旧日记由 `segmentGroups.qualifyVarietySegments` 在展示与导出时补齐。
+- 规则与纯函数都在 `src/lib/segmentGroups.ts`（不碰云端、不依赖 React）。
 
 ### 5.5 截图流程
 
@@ -262,7 +275,8 @@ React 页面与组件 (src/)
 
 ## 7. 版本状态
 
-- 当前版本：v2.0.8
+- 当前版本：v2.0.9
 - 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源。v2 收尾时已把主进程侧的本地数据层（`modules/{movie,diary,watchRecord,watchlist,stats}`、`electron/store`、`utils/{paths,thumbnail,atomicWrite}`、`shared/schemas`、对应 IPC 通道与 `uuid`/`zod` 依赖）整体移除，主进程只保留原生能力。
 - 跨平台改造（第一阶段）：新增 `src/platform/` 平台抽象层，收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `platform` 访问，业务数据仍由 `cloudApi` 直连 PocketBase，为后续 Capacitor Android 端复用同一套 React UI 打基础。
 - 跨平台改造（第二阶段）：安装 Capacitor 8（@capacitor/core + @capacitor/cli + @capacitor/android），新增 `capacitor.config.ts`（appId=com.pianke.app、webDir=dist）与 `android/` 工程；Electron 构建流程保持不变，`npm run build` 产物可直接被 `npx cap sync android` 复用。
+- 综艺分段结构化：`Progress.segments` 由 `string[]` 改为 `{ period, label }[]`，期号从「从标签文本里猜」变成显式字段；旧数据在读取时升级并由 `migrateVarietySegments` 一次性写回。综艺进度日记与 Excel 导出随之统一按「第 N 期 + 分段名」展示（详见 5.4.1）。

@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { platform } from '@/platform';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
-import { countWatched, groupSegments, nextPeriodLabel, renamePeriod } from '@/lib/segmentGroups';
-import type { MovieMetadata, DiaryEntry, WatchRecord, ScreenshotInfo } from '@shared/types/index';
+import { countWatched, groupSegments, nextPeriodSegment, parseSegmentText, renamePeriod } from '@/lib/segmentGroups';
+import type { MovieMetadata, DiaryEntry, ProgressSegment, WatchRecord, ScreenshotInfo } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
 import Modal from '@/components/common/Modal';
@@ -28,7 +28,7 @@ export default function MovieDetail() {
   const [showProgress, setShowProgress] = useState(false);
   const [showFinishWatching, setShowFinishWatching] = useState(false);
   const [updatingProgress, setUpdatingProgress] = useState(false);
-  const [localSegs, setLocalSegs] = useState<string[] | null>(null);
+  const [localSegs, setLocalSegs] = useState<ProgressSegment[] | null>(null);
   const localSegsRef = useRef(localSegs);
   localSegsRef.current = localSegs;
   /** 正在改名（点铅笔）的分段下标；为 null 时一律显示为可点击的方块。 */
@@ -98,7 +98,7 @@ export default function MovieDetail() {
         setLocalSegs([...movie.progress.segments]);
       } else {
         // 兼容没有 segments 字段的旧综艺数据
-        setLocalSegs(Array(movie.progress.totalEpisodes || 1).fill(''));
+        setLocalSegs(Array.from({ length: movie.progress.totalEpisodes || 1 }, () => ({ period: '', label: '' })));
       }
     }
   }, [movie?.mediaType, movie?.progress?.segments, movie?.progress?.totalEpisodes]);
@@ -913,36 +913,35 @@ export default function MovieDetail() {
       {/* Progress Card — 综艺：按期分组的进度方块 */}
       {movie.mediaType === '综艺' && localSegs && (() => {
         const segs = localSegs;
-        const filled = segs.filter(s => s.trim()).length;
+        const filled = segs.filter(s => s.label.trim()).length;
         const groups = groupSegments(segs);
-        const commitSegs = (newSegs: string[]) => {
+        const commitSegs = (newSegs: ProgressSegment[]) => {
           setLocalSegs(newSegs);
           void (async () => {
             const updated = await api.movie.update(id!, {
               ...movie,
-              progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length },
+              progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.label.trim()).length, totalEpisodes: newSegs.length },
             });
             setMovie(updated);
             void refreshDiary();
           })();
         };
-        // 新增分段插在所属期的末尾，这样在该期里加一行不会跑到别的期去。
+        // 新增分段插在所属期的末尾、并继承该期的期号，所以只填「下」「加更上」也不会丢期号。
         const insertAfter = (index: number) => {
           const next = [...segs];
-          next.splice(index + 1, 0, '');
+          next.splice(index + 1, 0, { period: segs[index]?.period ?? '', label: '' });
           setLocalSegs(next);
         };
         /**
          * “添加一期”：直接生成下一期（按现有最大期号 +1），并立刻成组。
          *
-         * 名称带 `上` 后缀，否则解析不出期号会落进「其他」组。注意本模型里
-         * 「已看」等价于「标签非空」，因此新一期初始显示为已看——这是已知代价，
-         * 想要“已排期但未看”需要改数据模型。
+         * 新一期默认带 `上` 分段名。注意本模型里「已看」等价于「分段名非空」，因此新一期
+         * 初始显示为已看——这是已知代价，想要“已排期但未看”需要再引入 watched 字段。
          */
         const appendNextPeriod = () => {
-          const label = nextPeriodLabel(segs);
-          setLocalSegs([...segs, label]);
-          showToast(`已添加「${label}」，可点击方块改名`);
+          const segment = nextPeriodSegment(segs);
+          setLocalSegs([...segs, segment]);
+          showToast(`已添加「${segment.period}${segment.label}」，可点击方块改名`);
         };
 
         // 折叠时只保留“期号最大”的那一期（按期号比较，而非列表位置）。
@@ -979,33 +978,29 @@ export default function MovieDetail() {
               {visibleGroups.map(group => (
                 <div className="segment-group" key={group.id}>
                   <div className="segment-group-head">
-                    {group.sortKey !== Number.MAX_SAFE_INTEGER ? (
-                      /* 期数可直接编辑：改动会同步重命名该期所有行（见 lib/segmentGroups.renamePeriod） */
-                      <span className="segment-group-name segment-period-edit">
-                        第
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          className="segment-period-input"
-                          value={editingPeriod?.id === group.id ? editingPeriod.draft : group.sortKey}
-                          /* 宽度随位数增长，避免两位期号被截断 */
-                          style={{ width: `${1.1 + 0.65 * ((editingPeriod?.id === group.id ? editingPeriod.draft : String(group.sortKey)).length || 1)}em` }}
-                          onFocus={() => setEditingPeriod({ id: group.id, draft: String(group.sortKey) })}
-                          onChange={(e) => setEditingPeriod({ id: group.id, draft: e.target.value.replace(/[^0-9]/g, '') })}
-                          onBlur={() => {
-                            const next = Number(editingPeriod?.draft);
-                            setEditingPeriod(null);
-                            if (!Number.isFinite(next) || next <= 0 || next === group.sortKey) return;
-                            commitSegs(renamePeriod(segs, group.sortKey, next));
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setEditingPeriod(null); e.currentTarget.blur(); } }}
-                          aria-label={`第 ${group.sortKey} 期，可直接修改期数`}
-                        />
-                        期
-                      </span>
-                    ) : (
-                      <span className="segment-group-name">{group.title}</span>
-                    )}
+                    {/* 期号即组标题，可直接编辑：改一处，整期跟随（见 lib/segmentGroups.renamePeriod）。
+                        非数字期号（先导片、番外…）同样可改，因此不再假设「第 N 期」这一种写法。 */}
+                    <span className="segment-group-name segment-period-edit">
+                      <input
+                        type="text"
+                        className="segment-period-input"
+                        value={editingPeriod?.id === group.id ? editingPeriod.draft : group.title}
+                        /* 宽度随文字长度增长（中日韩字符按 1em、其余按 0.6em 估算），避免期号被截断 */
+                        style={{ width: `${Math.max(2.2, [...(editingPeriod?.id === group.id ? editingPeriod.draft : group.title)].reduce((sum, ch) => sum + (/[\u4e00-\u9fff]/.test(ch) ? 1 : 0.6), 0))}em` }}
+                        onFocus={() => setEditingPeriod({ id: group.id, draft: group.title })}
+                        onChange={(e) => setEditingPeriod({ id: group.id, draft: e.target.value })}
+                        onBlur={() => {
+                          const draft = editingPeriod?.draft ?? '';
+                          setEditingPeriod(null);
+                          const next = renamePeriod(segs, group.title, draft);
+                          // 标题没变（含只改了空格/大小写形式）就不写回，避免无意义请求
+                          if (next.every((segment, i) => segment.period === segs[i].period)) return;
+                          commitSegs(next);
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setEditingPeriod(null); e.currentTarget.blur(); } }}
+                        aria-label={`期号「${group.title}」，可直接修改（整期一起改）`}
+                      />
+                    </span>
                     <span className="segment-group-line" />
                     <span className="segment-group-count">{countWatched(group)}/{group.items.length}</span>
                   </div>
@@ -1016,32 +1011,35 @@ export default function MovieDetail() {
                           key={item.index}
                           type="text"
                           autoFocus
-                          value={segs[item.index]}
+                          /* 只编辑分段名：期号由组标题（上一行）负责；若粘贴了带期号的完整名称，
+                             blur 时会按文本里的期号归位到对应期。用 defaultValue 以免打字过程中
+                             被解析结果改写（受控 value 会把「第5期上」立刻吃成「上」）。 */
+                          defaultValue={segs[item.index].label}
                           onChange={(e) => {
-                            const next = [...segs];
-                            next[item.index] = e.target.value;
+                            const next = [...localSegsRef.current!];
+                            next[item.index] = parseSegmentText(e.target.value, segs[item.index].period);
                             setLocalSegs(next);
                           }}
-                          onBlur={(e) => {
-                            const value = e.target.value;
+                          onBlur={() => {
                             setEditingSegment(null);
+                            const next = localSegsRef.current!;
+                            const edited = next[item.index];
                             // 清空即删除该分段；全部删光时保留一个空位，避免出现空的进度卡。
-                            if (value.trim() === '') {
-                              const next = [...segs];
-                              next.splice(item.index, 1);
-                              if (next.length === 0) next.push('');
-                              commitSegs(next);
+                            if (!edited?.label.trim()) {
+                              const trimmed = [...next];
+                              trimmed.splice(item.index, 1);
+                              if (trimmed.length === 0) trimmed.push({ period: '', label: '' });
+                              commitSegs(trimmed);
                               return;
                             }
-                            if (value !== (movie.progress!.segments?.[item.index] ?? '')) {
-                              const next = [...localSegsRef.current!];
-                              next[item.index] = value;
+                            const saved = movie.progress!.segments?.[item.index];
+                            if (!saved || saved.period !== edited.period || saved.label !== edited.label) {
                               commitSegs(next);
                             }
                           }}
-                          onKeyDown={(e) => { if (e.key === 'Escape') setEditingSegment(null); }}
+                          onKeyDown={(e) => { if (e.key === 'Escape') setEditingSegment(null); if (e.key === 'Enter') e.currentTarget.blur(); }}
                           className="segment-edit-input"
-                          style={{ width: getSegmentInputWidth(segs[item.index]) }}
+                          style={{ width: getSegmentInputWidth(segs[item.index].label) }}
                         />
                       ) : (
                         <span className="segment-cell" key={item.index}>
@@ -1059,7 +1057,7 @@ export default function MovieDetail() {
                             onClick={() => {
                               const next = [...segs];
                               next.splice(item.index, 1);
-                              if (next.length === 0) next.push('');
+                              if (next.length === 0) next.push({ period: '', label: '' });
                               commitSegs(next);
                             }}
                             aria-label={`删除 ${item.raw || `第 ${item.index + 1} 个分段`}`}

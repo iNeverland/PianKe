@@ -4,13 +4,22 @@ export type MediaType = '电影' | '剧集' | '综艺' | '纪录片' | '动画';
 // 观看状态
 export type WatchStatus = '在看' | '已看完' | '想看';
 
+// 综艺分段：期号与分段名分开存，期号是数据而不是从自由文本里猜出来的约定。
+// 例：{ period: '第 3 期', label: '加更上' }、{ period: '先导片', label: '上' }、{ period: '', label: '花絮' }
+export interface ProgressSegment {
+  /** 所属期号/分组名，如「第 3 期」「先导片」；无法归期时为空字符串 */
+  period: string;
+  /** 组内分段名，如「上」「中」「下」「加更上」 */
+  label: string;
+}
+
 // 剧集进度
 // - 剧集/常规影视：episode + totalEpisodes
-// - 综艺：segments[] 自由文本标签，非空项视为已看
+// - 综艺：segments[]，label 非空视为已看
 export interface Progress {
-  episode: number;          // 当前看到第几集（综艺时为已填 segment 数量）
-  totalEpisodes: number;    // 总集数（综艺时为 segment 总数）
-  segments?: string[];      // 综艺专用：自定义进度标签，如「先导片」「第1期」「番外篇」
+  episode: number;          // 当前看到第几集（综艺时为已看分段数量）
+  totalEpisodes: number;    // 总集数（综艺时为分段总数）
+  segments?: ProgressSegment[];
 }
 
 // 影视元数据

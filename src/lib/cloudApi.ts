@@ -1,12 +1,13 @@
 import type { RecordModel } from 'pocketbase';
 import type {
   DiaryCalendarEntry, DiaryEntry, DiaryTimelineMonth, MonthSummary,
-  MovieMetadata, MovieSummary, Progress, ScreenshotInfo, StatsByCountry, StatsByGenre,
+  MovieMetadata, MovieSummary, Progress, ProgressSegment, ScreenshotInfo, StatsByCountry, StatsByGenre,
   StatsByRating, StatsByType, StatsByYear, StatsDashboard, StatsMonthlyTrend,
   StatsOverview, WatchRecord, WatchStatus,
 } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr, parseLocalDate } from '@shared/utils/date';
 import { getCloudUser, isInvalidCloudSessionAfterWriteFailure, pocketbase } from './pocketbase';
+import { normalizeStoredSegments, qualifyVarietySegments, segmentText } from './segmentGroups';
 import { getOfflineMedia, getOfflineSnapshot, requestPersistentOfflineStorage, saveOfflineMedia, saveOfflineSnapshot } from './offlineCache';
 
 type CloudMovieRecord = RecordModel & Record<string, unknown>;
@@ -303,10 +304,12 @@ function progressField(record: CloudRecord): Progress | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const raw = value as Partial<Progress>;
   if (typeof raw.episode !== 'number' || typeof raw.totalEpisodes !== 'number') return null;
+  // 综艺分段在这里统一成结构化形态（旧自由文本标签就地升级，见 segmentGroups）。
+  const segments = normalizeStoredSegments(raw.segments);
   return {
     episode: raw.episode,
     totalEpisodes: raw.totalEpisodes,
-    ...(Array.isArray(raw.segments) ? { segments: raw.segments.filter((item): item is string => typeof item === 'string') } : {}),
+    ...(segments ? { segments } : {}),
   };
 }
 
@@ -488,13 +491,16 @@ async function createSystemDiary(movieId: string, kind: 'progress' | 'status', r
  * 与本地 updateMovie 行为一致：最近 10 分钟内已有的 progress 日记被更新，
  * 否则新建一条，避免频繁编辑分段标签产生冗余记录。
  *
- * 只把「本次最新添加」的期数写进 review，避免期数很多时日记把整个历史分段列表
+ * 只把「本次最新添加」的分段写进 review，避免期数很多时日记把整个历史分段列表
  * 累积显示出来（只显示最新添加的分段）。
+ *
+ * 写入的是「期号 + 分段名」的完整文本（如「第 3 期加更上」），所以新日记本身
+ * 就自带期号；`qualifyVarietySegments` 只用于补齐更早写入的、只带分段名的旧日记。
  */
-async function upsertVarietyProgressDiary(movieId: string, segments: string[], previousSegments?: string[]): Promise<void> {
-  const filled = segments.filter((s) => s.trim());
-  const prevSet = new Set((previousSegments || []).filter((s) => s.trim()));
-  const added = filled.filter((s) => !prevSet.has(s));
+async function upsertVarietyProgressDiary(movieId: string, segments: ProgressSegment[], previousSegments?: ProgressSegment[]): Promise<void> {
+  const previous = new Set((previousSegments ?? []).map(segmentText).filter(Boolean));
+  const filled = segments.map(segmentText).filter(Boolean);
+  const added = filled.filter((text) => !previous.has(text));
   const review = added.length > 0 ? added.join(' · ') : (filled.length > 0 ? filled.join(' · ') : '未标注观看进度');
   const now = new Date();
   const watchTime = getLocalTimeStr();
@@ -947,6 +953,68 @@ export async function migrateVarietyDiaryReviews(): Promise<void> {
   }
 }
 
+/**
+ * 一次性迁移：把综艺分段从「自由文本标签」升级为结构化 `{ period, label }`。
+ *
+ * 期号从此是数据、而不是每次展示时从文本里猜的约定，详情页分组、日记页显示与 Excel
+ * 导出的口径因此完全一致。转换规则见 `legacyTextToSegments`（解析期号 + 裸标签就近归属，
+ * 与升级前详情页的分组结果相同）。幂等：只有确实存在旧文本标签才写回；全部成功或本来就
+ * 无事可做时按账号打标记，避免每次登录重复扫描。
+ */
+export async function migrateVarietySegments(): Promise<void> {
+  const ownerId = getCloudUser()?.id;
+  if (!ownerId) return;
+  const flagKey = `pianke.segmentsMigrated.v1.${ownerId}`;
+  try {
+    if (localStorage.getItem(flagKey) === '1') return;
+  } catch {
+    /* localStorage 不可用时每次都跑，操作幂等 */
+  }
+
+  let snapshot: Snapshot;
+  try {
+    snapshot = await loadSnapshot();
+  } catch {
+    return;
+  }
+
+  const migrated = new Map<string, Progress>();
+  let failed = 0;
+  for (const record of snapshot.movies) {
+    if (stringField(record, 'mediaType') !== '综艺') continue;
+    const progress = progressField(record);
+    if (!progress?.segments) continue;
+    // 已经是结构化形态就跳过（旧数据里至少有一项是字符串）
+    const stored = (record.progress as { segments?: unknown } | undefined)?.segments;
+    if (Array.isArray(stored) && stored.every((item) => item != null && typeof item === 'object')) continue;
+    try {
+      await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(record.id, { progress }));
+      migrated.set(record.id, progress);
+    } catch (error) {
+      failed++;
+      console.warn('[cloud] Failed to migrate variety segments', record.id, error);
+    }
+  }
+
+  if (migrated.size > 0) {
+    invalidateSnapshot();
+    scheduleCloudSync();
+    updateOfflineSnapshot((current) => ({
+      ...current,
+      movies: current.movies.map((item) => (migrated.has(item.id) ? { ...item, progress: migrated.get(item.id) } : item)),
+    }));
+  }
+
+  // 全部写入成功（或本就没有需要升级的数据）后才标记完成；部分失败下次登录会重试。
+  if (failed === 0) {
+    try {
+      localStorage.setItem(flagKey, '1');
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 /** 应用登录后调用：预先恢复本地快照，并让云端同步在后台运行。 */
 export async function hydrateOfflineCloudCache(): Promise<void> {
   const ownerId = getCloudUser()?.id;
@@ -956,6 +1024,8 @@ export async function hydrateOfflineCloudCache(): Promise<void> {
   void fetchRemoteSnapshot(ownerId).catch(() => {});
   // 后台一次性改写历史综艺日记的 review，让它「对比上一条只显示新增的分段」。
   void migrateVarietyDiaryReviews();
+  // 后台一次性把综艺分段升级成结构化 `{ period, label }`。
+  void migrateVarietySegments();
 }
 
 function splitCountries(country: string): string[] {
@@ -1098,8 +1168,21 @@ async function exportCloudMoviesToExcel(): Promise<{ filePath?: string; fileName
     watchRecordsByMovie.set(movieId, [...(watchRecordsByMovie.get(movieId) || []), toWatchRecord(record)]);
   }
 
+  const metadata = movies.map(toMetadata);
+  // 综艺进度日记的详情列与日记页保持同一口径：只显示最新添加的分段，并补上期号
+  // （旧日记里只写了「加更上」这类分段名，导出时也应是「第 3 期加更上」）。
+  for (const movie of metadata) {
+    const entries = diaryByMovie.get(movie.id);
+    if (!entries?.length) continue;
+    const reviews = varietyProgressReviews(entries, movie.mediaType, movie.progress?.segments);
+    if (reviews.size === 0) continue;
+    diaryByMovie.set(movie.id, entries.map((entry) => (
+      reviews.has(entry.id) ? { ...entry, review: reviews.get(entry.id) } : entry
+    )));
+  }
+
   const { workbook, movieCount, diaryCount, watchRecordCount } = buildExcelWorkbook(
-    movies.map(toMetadata),
+    metadata,
     diaryByMovie,
     watchRecordsByMovie,
     screenshotsToMap(screenshots),
@@ -1117,19 +1200,45 @@ async function exportCloudMoviesToExcel(): Promise<{ filePath?: string; fileName
  * 越来越长，导致日记页把历史全部期数都显示出来。这里按观看时间顺序做差分：
  * 每条只保留相对前一条「最新添加」的分段，实现“只显示最新添加的期数”的效果，
  * 并且对云端早已累积的旧记录同样生效。
+ *
+ * 展示前再补一道期号：用户常只给某期的第一个分段写期号（「第 3 期上」），同期的其余
+ * 分段只写「下」「加更上」，日记直接展示原文就看不出是哪一期。这里用
+ * `segmentGroups.qualifyVarietySegments` 把期号补齐（自带期号的先占位，只写分段名的
+ * 按顺序认领剩下的同名分段）。
  */
-function varietyProgressReviews(entries: DiaryEntry[], mediaType: string): Map<string, string> {
+function varietyProgressReviews(entries: DiaryEntry[], mediaType: string, segments?: ProgressSegment[]): Map<string, string> {
   const display = new Map<string, string>();
   if (mediaType !== '综艺') return display;
+
   const sorted = [...entries].sort((a, b) => `${a.watchDate}${a.watchTime || ''}`.localeCompare(`${b.watchDate}${b.watchTime || ''}`));
+
+  // ① 先按时间顺序取出每条日记「相对之前新增」的分段——与下面展示的口径完全一致。
   const seen = new Set<string>();
+  const byEntry: { entry: DiaryEntry; review: string; added: string[] }[] = [];
   for (const entry of sorted) {
-    if (entry.kind !== 'progress' || !entry.review || entry.review === '未标注观看进度') continue;
+    const review = entry.review;
+    if (entry.kind !== 'progress' || !review || review === '未标注观看进度') continue;
     // 兼容历史数据里用「.」或「·」等分隔的分段列表。
-    const segs = entry.review.split(/[·.、，,]/).map((s) => s.trim()).filter(Boolean);
-    const added = segs.filter((seg) => !seen.has(seg));
-    segs.forEach((seg) => seen.add(seg));
-    display.set(entry.id, added.length > 0 ? added.join(' · ') : entry.review);
+    const segs = review.split(/[·.、，,]/).map((s) => s.trim()).filter(Boolean);
+    const added: string[] = [];
+    for (const seg of segs) {
+      if (seen.has(seg)) continue;
+      seen.add(seg);
+      added.push(seg);
+    }
+    byEntry.push({ entry, review, added });
+  }
+
+  // ② 只对真正会显示出来的这些分段补期号：它们按时间顺序正好对应 segments 的推进，
+  //    历史累积型旧记录里重复出现的分段不会参与对齐、也就不会把顺序带偏。
+  const qualified = qualifyVarietySegments(byEntry.flatMap((item) => item.added), segments ?? []);
+
+  let cursor = 0;
+  for (const { entry, review, added } of byEntry) {
+    const names = qualified.slice(cursor, cursor + added.length);
+    cursor += added.length;
+    const shown = added.map((seg, i) => names[i] ?? seg);
+    display.set(entry.id, shown.length > 0 ? shown.join(' · ') : review);
   }
   return display;
 }
@@ -1355,8 +1464,8 @@ export const cloudApi = {
       const entries = sortByMomentDesc((await getDiaryEntriesForMovie(movieId)).map(toDiary));
       const record = await getMovieRecord(movieId).catch(() => null);
       const mediaType = record ? stringField(record, 'mediaType') : '';
-      const reviews = varietyProgressReviews(entries, mediaType);
-      return reviews.size > 0 ? entries.map((entry) => (reviews.has(entry.id) ? { ...entry, review: reviews.get(entry.id) } : entry)) : entries;
+      const reviews = varietyProgressReviews(entries, mediaType, record ? progressField(record)?.segments : undefined);
+      return reviews.size > 0 ? entries.map((entry) => (reviews.has(entry.id) ? { ...entry, review: reviews.get(entry.id)! } : entry)) : entries;
     },
     delete: async (_movieId: string, entryId: string): Promise<void> => {
       await cloudWrite(() => pocketbase.collection('diary_entries').delete(entryId));
@@ -1380,7 +1489,7 @@ export const cloudApi = {
           byMovie.set(movie.id, group);
         }
         for (const { movie, entries } of byMovie.values()) {
-          const reviews = varietyProgressReviews(entries, movie.mediaType);
+          const reviews = varietyProgressReviews(entries, movie.mediaType, movie.progress?.segments);
           for (const [id, review] of reviews) displayReviewByEntry.set(id, review);
         }
       }

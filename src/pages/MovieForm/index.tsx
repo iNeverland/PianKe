@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSegmentInputWidth } from '@/lib/segmentInput';
-import type { MediaType, WatchStatus, Progress, TmdbSearchResult } from '@shared/types/index';
+import { parseSegmentText, segmentText } from '@/lib/segmentGroups';
+import type { MediaType, ProgressSegment, WatchStatus, Progress, TmdbSearchResult } from '@shared/types/index';
 import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
 import CustomSelect from '@/components/common/CustomSelect';
@@ -49,6 +50,8 @@ export default function MovieForm() {
   const [existingPosterUrl, setExistingPosterUrl] = useState<string | null>(null);
   const [isPosterDragging, setIsPosterDragging] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  /** 综艺进度条目正在输入的那一格（原文，避免解析结果在打字途中改写输入框）。 */
+  const [segmentDraft, setSegmentDraft] = useState<{ index: number; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialForm, setInitialForm] = useState<string>('');
   const [tmdbQuery, setTmdbQuery] = useState('');
@@ -493,7 +496,7 @@ export default function MovieForm() {
               if (form.progress) {
                 setForm({ ...form, progress: null });
               } else if (form.mediaType === '综艺') {
-                setForm({ ...form, progress: { episode: 0, totalEpisodes: 1, segments: [''] } });
+                setForm({ ...form, progress: { episode: 0, totalEpisodes: 1, segments: [{ period: '', label: '' }] } });
               } else {
                 setForm({ ...form, progress: { episode: form.status === '想看' ? 0 : 1, totalEpisodes: 1 } });
               }
@@ -510,43 +513,56 @@ export default function MovieForm() {
               const isVariety = form.mediaType === '综艺';
 
               if (isVariety) {
-                const segs = p.segments || [''];
+                const segs: ProgressSegment[] = p.segments || [{ period: '', label: '' }];
+                const updateSegs = (next: ProgressSegment[]) => setForm({
+                  ...form,
+                  progress: { ...p, segments: next, episode: next.filter(s => s.label.trim()).length, totalEpisodes: next.length },
+                });
+                /**
+                 * 该行期号的兜底：优先用本行已有期号，其次沿用上一行——这就是「一期里只给
+                 * 第一个分段写期号，其余只写后缀」的习惯，在这里一次性落成结构化数据。
+                 */
+                const periodFor = (index: number) => segs[index]?.period || segs[index - 1]?.period || '';
+                /** 删掉一格；全删光时保留一个空位，避免出现空的进度列表。 */
+                const removeSeg = (index: number) => {
+                  setSegmentDraft(null);
+                  const next = segs.filter((_, j) => j !== index);
+                  updateSegs(next.length > 0 ? next : [{ period: '', label: '' }]);
+                };
                 return (
                   <div className="mt-4">
                     <label className="form-label">进度条目</label>
+                    <p className="text-[11px] text-text-muted mb-2">
+                      每期第一个分段写上期号（如「第 1 期上」），同一期后续只写「下」「加更上」即可，期号会自动跟随上一格。
+                    </p>
                     <div className="flex flex-wrap gap-2">
-                      {segs.map((label, i) => (
+                      {segs.map((seg, i) => (
                         <div key={i} className="relative group">
                           <input
                             type="text"
-                            value={label}
+                            value={segmentDraft?.index === i ? segmentDraft.text : segmentText(seg)}
                             onChange={(e) => {
-                              const newSegs = [...segs];
-                              newSegs[i] = e.target.value;
-                              setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
+                              setSegmentDraft({ index: i, text: e.target.value });
+                              const next = [...segs];
+                              next[i] = parseSegmentText(e.target.value, periodFor(i));
+                              updateSegs(next);
                             }}
-                            className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${label.trim() ? 'bg-accent border-accent text-on-accent' : 'bg-bg-elevated border-border'}`}
-                            style={{ width: getSegmentInputWidth(label) }}
+                            onBlur={() => setSegmentDraft(null)}
+                            className={`min-w-[48px] px-3.5 h-8 text-center text-xs rounded border outline-none focus-visible:outline-none focus-visible:rounded ${seg.label.trim() ? 'bg-accent border-accent text-on-accent' : 'bg-bg-elevated border-border'}`}
+                            style={{ width: getSegmentInputWidth(segmentDraft?.index === i ? segmentDraft.text : segmentText(seg)) }}
                             placeholder={`#${i + 1}`}
                           />
                           <button
                             type="button"
-                            onClick={() => {
-                              const newSegs = segs.filter((_, j) => j !== i);
-                              if (newSegs.length === 0) newSegs.push('');
-                              setForm({ ...form, progress: { ...p, segments: newSegs, episode: newSegs.filter(s => s.trim()).length, totalEpisodes: newSegs.length } });
-                            }}
+                            onClick={() => removeSeg(i)}
                             aria-label={`删除第 ${i + 1} 个分段`}
-                            className={`hover-reveal absolute top-0 right-0.5 text-xs border-none cursor-pointer bg-transparent leading-none ${label.trim() ? 'text-on-accent' : 'text-red'}`}
+                            className={`hover-reveal absolute top-0 right-0.5 text-xs border-none cursor-pointer bg-transparent leading-none ${seg.label.trim() ? 'text-on-accent' : 'text-red'}`}
                           >×</button>
                         </div>
                       ))}
                       <button
                         type="button"
-                        onClick={() => {
-                          const newSegs = [...segs, ''];
-                          setForm({ ...form, progress: { ...p, segments: newSegs, totalEpisodes: newSegs.length } });
-                        }}
+                        onClick={() => updateSegs([...segs, { period: segs[segs.length - 1]?.period || '', label: '' }])}
                         className="w-8 h-8 rounded border border-dashed border-border text-text-muted hover:border-accent hover:text-accent-text transition-colors flex items-center justify-center bg-transparent cursor-pointer"
                       >+</button>
                     </div>
