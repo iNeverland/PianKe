@@ -189,10 +189,11 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
 
       <Modal open={passwordOpen} onClose={() => { if (!savingPassword) setPasswordOpen(false); }} title="修改密码" width="440px">
         <form className="profile-password-form" onSubmit={savePassword}>
-          <label className="profile-field"><span>当前密码</span><PasswordInput value={currentPassword} onChange={setCurrentPassword} autoComplete="current-password" required /></label>
-          <label className="profile-field"><span>新密码</span><PasswordInput value={newPassword} onChange={setNewPassword} autoComplete="new-password" minLength={8} required /></label>
-          <label className="profile-field"><span>确认新密码</span><PasswordInput value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" minLength={8} required /></label>
-          <label className="profile-field"><span>邮箱验证码</span><div className="flex gap-2"><input className="form-input min-w-0 flex-1" value={passwordCode} onChange={(event) => setPasswordCode(event.target.value)} autoComplete="one-time-code" required /><button className="btn btn-secondary whitespace-nowrap" type="button" onClick={sendPasswordCode} disabled={sendingPasswordCode || passwordCodeCooldown > 0}>{sendingPasswordCode ? '发送中…' : passwordCodeCooldown > 0 ? `${passwordCodeCooldown} 秒后重发` : '获取验证码'}</button></div></label>
+          {/* 空格 placeholder 是纯 CSS 钩子：让空态线条变浅（见 index.css「空态浅灰」段落），文本本身不可见 */}
+          <label className="profile-field"><span>当前密码</span><PasswordInput value={currentPassword} onChange={setCurrentPassword} placeholder=" " autoComplete="current-password" required /></label>
+          <label className="profile-field"><span>新密码</span><PasswordInput value={newPassword} onChange={setNewPassword} placeholder=" " autoComplete="new-password" minLength={8} required /></label>
+          <label className="profile-field"><span>确认新密码</span><PasswordInput value={confirmPassword} onChange={setConfirmPassword} placeholder=" " autoComplete="new-password" minLength={8} required /></label>
+          <label className="profile-field"><span>邮箱验证码</span><div className="flex gap-2"><input className="form-input min-w-0 flex-1" value={passwordCode} onChange={(event) => setPasswordCode(event.target.value)} placeholder=" " autoComplete="one-time-code" required /><button className="btn btn-secondary whitespace-nowrap" type="button" onClick={sendPasswordCode} disabled={sendingPasswordCode || passwordCodeCooldown > 0}>{sendingPasswordCode ? '发送中…' : passwordCodeCooldown > 0 ? `${passwordCodeCooldown} 秒后重发` : '获取验证码'}</button></div></label>
           <div className="profile-modal-actions"><button className="btn btn-ghost" type="button" onClick={() => setPasswordOpen(false)} disabled={savingPassword}>取消</button><button className="btn btn-primary" type="submit" disabled={savingPassword}>{savingPassword ? '修改中…' : '确认修改'}</button></div>
         </form>
       </Modal>

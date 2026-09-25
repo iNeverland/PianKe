@@ -23,6 +23,8 @@ export default function CustomSelect({ value, onChange, options, className = '' 
   }, [open]);
 
   const selectedLabel = options.find((o) => o.value === value)?.label || value;
+  // 无值时不显示内容：供 CSS 用浅灰线条表示空态（见 index.css「空态浅灰」段落）
+  const isEmpty = !selectedLabel;
 
   function selectAt(index: number): void {
     const option = options[index];
@@ -56,7 +58,7 @@ export default function CustomSelect({ value, onChange, options, className = '' 
     <div ref={ref} className={`custom-select ${className}`}>
       <button
         type="button"
-        className="custom-select-trigger"
+        className={`custom-select-trigger${isEmpty ? ' is-empty' : ''}`}
         onClick={() => setOpen(!open)}
         onKeyDown={handleKeyDown}
         aria-haspopup="listbox"

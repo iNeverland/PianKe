@@ -142,7 +142,8 @@ export default function CustomDatePicker({ value, onChange, className = '' }: Cu
 
   return (
     <div ref={ref} className={`custom-datepicker ${className}`}>
-      <button ref={triggerRef} type="button" className="custom-datepicker-trigger" onClick={openPicker} aria-haspopup="dialog" aria-expanded={open} aria-label={value ? `上映日期：${value}` : '选择上映日期'}>
+      {/* is-empty：无值时用浅灰线条表示空态（见 index.css「空态浅灰」段落） */}
+      <button ref={triggerRef} type="button" className={`custom-datepicker-trigger${value ? '' : ' is-empty'}`} onClick={openPicker} aria-haspopup="dialog" aria-expanded={open} aria-label={value ? `上映日期：${value}` : '选择上映日期'}>
         <span className={value ? 'custom-datepicker-value' : 'custom-datepicker-placeholder'}>{displayText}</span>
         <AppIcon name="calendar" className="custom-datepicker-icon" />
       </button>

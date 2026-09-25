@@ -4079,6 +4079,8 @@ button.titlebar-btn-close:hover {
  *  --border-control（浅 #8F8878 = 对页面底 3.18:1 / 对白底 3.52:1；深 #6E6E62 = 3.02–3.79:1）
  *    只给"必须靠边界才能认出是什么"的输入类控件；并以**下划线形态**承载，
  *    避免四边深框造成的"满屏黑框"观感（同样满足 1.4.11）。
+ *    注：输入框静止且为空时改用 --border-strong 的浅线，填入内容后才回到此色
+ *    （见文件末尾「输入类控件：空态浅灰、有内容深色」段落）。
  *  --border-strong（浅 #C4BDAD / 深 #4F4F46，柔和发丝线）
  *    用于弹窗、菜单、toast、卡片，以及本身有文字标签可识别的按钮/胶囊 ——
  *    这些面板与按钮的识别不由边界承担，保持浅线更符合原有暖纸风格。
@@ -4098,6 +4100,22 @@ button.titlebar-btn-close:hover {
   background: transparent;
   padding-left: 0;
   padding-right: 0;
+}
+
+/* ①-例外：编辑/添加影视页的「简介」是多行长文本，下划线形态会被误读为单行输入框，
+   恢复为矩形箱形。边界仍用 --border-control（3:1），聚焦用 --accent-text，
+   不降低 WCAG 1.4.11 / 2.4.7 的对比度与可见性。 */
+#form-synopsis {
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  padding: 8px 11px;
+}
+#form-synopsis:focus,
+#form-synopsis:focus-visible {
+  outline: none;
+  border-color: var(--accent-text);
+  box-shadow: none;
 }
 
 .custom-select-trigger,
@@ -4254,4 +4272,35 @@ button.timeline-item {
   .diary-layout { flex-direction: column; gap: 24px; }
   .diary-heatmap { width: 100%; }
   .diary-heatmap .sticky { position: static; }
+}
+
+/* ══════════════════════════════════════════╗
+   ══  输入类控件：空态浅灰、有内容深色      ══
+   ╚══════════════════════════════════════════ */
+/*
+ * 静止且为空的输入框只描一条浅发丝线（--border-strong），不再一上来就是 3:1 的深边界；
+ * 填入内容后才回到 --border-control，形成「空 → 淡 / 有内容 → 实」的层级。
+ * 用 :not(:focus) 把聚焦态让给 --accent-text，聚焦可见性不变（WCAG 2.4.7）。
+ *
+ * 空态判据是 :placeholder-shown，它要求元素带 placeholder 属性：
+ * - 没有 placeholder 的输入框需补一个空格 placeholder 作为纯 CSS 钩子（见 Profile 页密码/验证码）。
+ * - 自绘下拉（CustomSelect）与日期（CustomDatePicker）不是原生输入框，由组件在无值时加 .is-empty。
+ * - 空态线条低于 3:1 是「浅灰」这一视觉要求的必然结果；字段识别由标签与 placeholder 承担，
+ *   有内容与聚焦时仍为 3:1 / 4.5:1，故不构成 WCAG 1.4.11 的控件识别问题。
+ */
+.form-input:placeholder-shown:not(:focus),
+.review-textarea:placeholder-shown:not(:focus),
+.form-tag-input:placeholder-shown:not(:focus),
+.form-layout .form-input:placeholder-shown:not(:focus),
+.create-form-inner .form-input:placeholder-shown:not(:focus),
+.custom-select-trigger.is-empty:not(:focus),
+.form-layout .custom-select-trigger.is-empty:not(:focus),
+.custom-datepicker-trigger.is-empty:not(:focus),
+.form-layout .custom-datepicker-trigger.is-empty:not(:focus) {
+  border-bottom-color: var(--border-strong);
+}
+
+/* 「简介」是四边箱形输入框：空态四边一起变浅 */
+#form-synopsis:placeholder-shown:not(:focus) {
+  border-color: var(--border-strong);
 }
