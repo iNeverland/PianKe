@@ -198,10 +198,21 @@ probe() {
   fi
 }
 
+# 共享口令能否直接取数据由 .env 的 LEGACY_TOKEN_DATA_ACCESS 决定。收口（设为 false）之后
+# 它只用于注册，此时「带共享口令取数据」的正确期望就是 401 —— 不区分状态的话，
+# 收口后每次部署都会亮一个假失败。
+LEGACY_DATA_ACCESS="$(grep -E '^LEGACY_TOKEN_DATA_ACCESS=' "$APP_ENV" | head -1 | cut -d= -f2- | tr -d '[:space:]' || true)"
+SHARED_EXPECT=200
+SHARED_LABEL="新 token"
+if [[ "$LEGACY_DATA_ACCESS" == "false" ]]; then
+  SHARED_EXPECT=401
+  SHARED_LABEL="共享口令取数据（已停用，应 401）"
+fi
+
 # 注意探活路径是 /healthz（Caddy 的 handle_path 会剥离该前缀再重写成 /api/healthz）；
 # /api/healthz 落在受凭据保护的 handle 块里，未经授权返回 401 才是对的。
 probe "/healthz（免 token 的探活路径）" 200 "$BASE/healthz"
-probe "新 token" 200 -H "x-app-token: $APP_TOKEN" "$BASE/api/search?q=test"
+probe "$SHARED_LABEL" "$SHARED_EXPECT" -H "x-app-token: $APP_TOKEN" "$BASE/api/search?q=test"
 if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
   probe "旧 token（过渡期）" 200 -H "x-app-token: ${APP_TOKEN_PREVIOUS%%,*}" "$BASE/api/search?q=test"
 fi
