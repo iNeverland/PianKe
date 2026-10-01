@@ -41,7 +41,26 @@ const daysOption = takeOption('--days', '');
 const [command, argument] = argv;
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const stateDir = stateDirOption || process.env.STATE_DIRECTORY || path.join(scriptDir, 'data');
+/**
+ * 解析设备库目录。顺序很重要：
+ *   1. --state-dir / $STATE_DIRECTORY（systemd 会注入，手工 SSH 时不会）
+ *   2. /var/lib/pianke-tmdb（deploy/pianke-tmdb.service 里 StateDirectory 的路径）
+ *   3. 脚本同级的 data/（本地开发）
+ * 少了第 2 步，手工 SSH 上去运行会去找 ./data 并报告「设备库为空」，
+ * 而真实设备其实在 StateDirectory 里 —— 排查故障时这属于会误导人的错。
+ */
+function resolveStateDir() {
+  if (stateDirOption) return { dir: stateDirOption, source: '--state-dir' };
+  if (process.env.STATE_DIRECTORY) return { dir: process.env.STATE_DIRECTORY, source: '环境变量 STATE_DIRECTORY' };
+  const systemdDir = '/var/lib/pianke-tmdb';
+  if (process.platform !== 'win32' && fs.existsSync(systemdDir)) {
+    return { dir: systemdDir, source: 'systemd StateDirectory 默认路径' };
+  }
+  return { dir: path.join(scriptDir, 'data'), source: '脚本同级 data/ 默认路径' };
+}
+
+const resolved = resolveStateDir();
+const stateDir = resolved.dir;
 const port = Number(portOption || process.env.PORT || 8787);
 
 function fail(message) {
@@ -74,11 +93,16 @@ async function guardRunningService(action) {
 
 function printList(store) {
   const records = store.list();
+  console.log(`设备库：${store.filePath}`);
+  console.log(`目录来源：${resolved.source}`);
   if (records.length === 0) {
-    console.log('设备库为空。');
+    console.log('（当前没有已注册的设备）');
+    if (!fs.existsSync(store.filePath)) {
+      console.log('提示：该文件还不存在。如果服务其实已经注册过设备，说明它的 STATE_DIRECTORY 与上面不同，');
+      console.log('      请先 `systemctl show pianke-tmdb -p Environment` 查看，再用 --state-dir 指定。');
+    }
     return;
   }
-  console.log(`设备库：${store.filePath}`);
   console.log(`共 ${records.length} 个设备（上限 ${store.maxDevices}）\n`);
   console.log('deviceId          请求数    最近使用              注册时间              备注');
   console.log('─'.repeat(100));
@@ -115,7 +139,7 @@ async function main() {
     if (!argument) fail('用法：node device-admin.mjs revoke <deviceId>');
     await guardRunningService('revoke');
     const target = store.list().find((record) => record.deviceId.startsWith(argument));
-    if (!target) fail(`找不到设备：${argument}`);
+    if (!target) fail(`在 ${store.filePath} 中找不到设备：${argument}`);
     if (!store.revoke(target.deviceId)) fail('吊销失败：设备不存在');
     console.log(`✓ 已吊销设备 ${target.deviceId}（${target.label || '未命名'}）`);
     console.log('  该设备下次请求会收到 401；客户端会自动重新注册并拿到新的凭据。');

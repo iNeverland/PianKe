@@ -171,21 +171,51 @@ systemctl restart pianke-tmdb 2>/dev/null || warn "未能重启 pianke-tmdb，�
 sleep 1
 systemctl is-active --quiet pianke-tmdb && log "pianke-tmdb 已运行" || warn "pianke-tmdb 未处于运行状态，请查看 journalctl -u pianke-tmdb"
 
-# 6) 本机验收（用 Host 头绕过 DNS）
-log "本机经 Caddy 验收"
-echo -n "  /healthz（无需 token）: "
-curl -s --max-time 10 -H "Host: $DOMAIN" http://127.0.0.1/healthz || echo "(失败)"
-echo
-echo -n "  带 token:   "
-curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 -H "Host: $DOMAIN" -H "x-app-token: $APP_TOKEN" "http://127.0.0.1/api/search?q=test"
-if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
-  echo -n "  旧 token（过渡期应为 200）: "
-  curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 -H "Host: $DOMAIN" -H "x-app-token: ${APP_TOKEN_PREVIOUS%%,*}" "http://127.0.0.1/api/search?q=test"
+# 6) 本机验收
+#
+# 必须走 HTTPS：Caddy 对 http:// 请求一律回 301/308 跳转，只查状态码会把「重定向」
+# 误当成「通过」（实测三项全变 308，等于什么都没验证）。--resolve 让它直连本机
+# 并保持正确的 SNI 与 Host，因此不依赖公网 DNS，也能校验证书。
+VERIFY_FAILED=0
+if curl -s -o /dev/null --max-time 10 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/api/healthz"; then
+  BASE="https://$DOMAIN"; RESOLVE=(--resolve "$DOMAIN:443:127.0.0.1")
+  log "本机经 Caddy 验收（HTTPS）"
+else
+  BASE="http://$DOMAIN"; RESOLVE=(--resolve "$DOMAIN:80:127.0.0.1")
+  warn "HTTPS 尚不可用（证书未签发？），退回 HTTP 验收，结果仅供参考"
+  log "本机经 Caddy 验收（HTTP）"
 fi
-echo -n "  无 token:   "
-curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 -H "Host: $DOMAIN" "http://127.0.0.1/api/search?q=test"
+
+probe() {
+  local label="$1" expect="$2"; shift 2
+  local got
+  got="$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${RESOLVE[@]}" "$@")"
+  if [[ "$got" == "$expect" ]]; then
+    echo "  ✓ $label: $got"
+  else
+    VERIFY_FAILED=1
+    echo "  ✗ $label: 期望 $expect，实际 $got"
+  fi
+}
+
+# 注意探活路径是 /healthz（Caddy 的 handle_path 会剥离该前缀再重写成 /api/healthz）；
+# /api/healthz 落在受凭据保护的 handle 块里，未经授权返回 401 才是对的。
+probe "/healthz（免 token 的探活路径）" 200 "$BASE/healthz"
+probe "新 token" 200 -H "x-app-token: $APP_TOKEN" "$BASE/api/search?q=test"
+if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
+  probe "旧 token（过渡期）" 200 -H "x-app-token: ${APP_TOKEN_PREVIOUS%%,*}" "$BASE/api/search?q=test"
+fi
+probe "无 token" 401 "$BASE/api/search?q=test"
+
+if [[ "$VERIFY_FAILED" -ne 0 ]]; then
+  echo
+  warn "有验收项未通过。配置已经写入并生效，未自动回滚；请按上面的 ✗ 逐项排查。"
+  echo "  反代配置备份：$BACKUP"
+  echo "  .env 备份：${ENV_BACKUP:-(本次未轮换口令)}"
+  exit 1
+fi
 
 echo
-log "完成。DNS 生效后，Caddy 会在首次访问时自动签发 $DOMAIN 的证书。"
+log "全部验收通过。"
 echo "  公网验收：curl -s https://$DOMAIN/healthz"
 echo "  带 token：curl -s -H 'x-app-token: <APP_TOKEN>' 'https://$DOMAIN/api/search?q=test'"

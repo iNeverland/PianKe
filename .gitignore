@@ -29,6 +29,10 @@ Thumbs.db
 # 模板见 resources/tmdb-proxy.example.json（已提交，只含占位值）。
 resources/tmdb-proxy.json
 
+# 设备凭据库（本地试跑 device-admin.mjs 时会生成；生产上由 systemd 的
+# StateDirectory 放在 /var/lib/pianke-tmdb，不落在仓库里）
+server/data/
+
 # IDE local config
 .idea/
 
