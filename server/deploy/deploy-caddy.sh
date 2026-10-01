@@ -8,6 +8,11 @@
 #   ./deploy-caddy.sh tmdb.example.com /etc/caddy/Caddyfile
 #
 # 需要 /opt/pianke/server/.env 里已有 APP_TOKEN。脚本幂等：重复运行只会覆盖自己的站点。
+#
+# 口令轮换：
+#   ROTATE_APP_TOKEN=1 ./deploy-caddy.sh <域名>      ← 自动生成新口令并保留旧口令（过渡期）
+#   或手工把 .env 的旧口令挪到 APP_TOKEN_PREVIOUS，再直接重跑本脚本。
+#   两种方式都会让反代变成同时接受新旧口令；客户端升级完再删掉那一行并重跑。
 set -euo pipefail
 
 DOMAIN="${1:-}"
@@ -18,13 +23,65 @@ log()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m[!]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[x]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# 把若干「口令 / 逗号分隔的口令串」拼成锚定正则，例如 ^(新口令|旧口令)$。
+# 只接受 [A-Za-z0-9_-]，避免把正则元字符带进反代配置。
+build_token_regex() {
+  local tokens=() raw part parts
+  for raw in "$@"; do
+    [[ -n "$raw" ]] || continue
+    IFS=',' read -r -a parts <<< "$raw"
+    for part in "${parts[@]}"; do
+      part="${part//[[:space:]]/}"
+      [[ -n "$part" ]] || continue
+      [[ "$part" =~ ^[A-Za-z0-9_-]+$ ]] || die "口令含非法字符（只允许字母/数字/下划线/连字符）"
+      tokens+=("$part")
+    done
+  done
+  [[ ${#tokens[@]} -gt 0 ]] || return 0
+  local IFS='|'
+  printf '^(%s)$' "${tokens[*]}"
+}
+
 [[ $EUID -eq 0 ]] || die "请用 root 运行"
 [[ -n "$DOMAIN" ]] || die "用法: ./deploy-caddy.sh <域名> [Caddyfile路径]"
 [[ -f "$CADDYFILE" ]] || die "$CADDYFILE 不存在；这台机器可能没有 Caddy，请改用 deploy.sh + Nginx 方案"
 [[ -f "$APP_ENV" ]] || die "$APP_ENV 不存在，先完成服务端部署"
 
 APP_TOKEN="$(grep -E '^APP_TOKEN=' "$APP_ENV" | head -1 | cut -d= -f2- || true)"
+APP_TOKEN_PREVIOUS="$(grep -E '^APP_TOKEN_PREVIOUS=' "$APP_ENV" | head -1 | cut -d= -f2- || true)"
 [[ -n "$APP_TOKEN" ]] || die "$APP_ENV 里没有 APP_TOKEN，请先设置（否则接口无鉴权）"
+
+# 口令轮换（可选）：ROTATE_APP_TOKEN=1 ./deploy-caddy.sh <域名>
+# 生成新口令写回 .env，并把当前口令追加进 APP_TOKEN_PREVIOUS，
+# 这样尚未升级的客户端不会立刻 401。客户端普及后删掉 .env 里那一行再重跑本脚本。
+if [[ "${ROTATE_APP_TOKEN:-0}" == "1" ]]; then
+  command -v openssl >/dev/null 2>&1 || die "缺少 openssl，无法生成新口令"
+  NEW_PREVIOUS="$APP_TOKEN"
+  if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
+    NEW_PREVIOUS="$APP_TOKEN,$APP_TOKEN_PREVIOUS"
+  fi
+  NEW_TOKEN="$(openssl rand -hex 32)"
+  ENV_BACKUP="$APP_ENV.backup-$(date +%Y%m%d%H%M%S)"
+  cp -a "$APP_ENV" "$ENV_BACKUP"
+  sed -i -e "s|^APP_TOKEN=.*|APP_TOKEN=$NEW_TOKEN|" "$APP_ENV"
+  if grep -qE '^APP_TOKEN_PREVIOUS=' "$APP_ENV"; then
+    sed -i -e "s|^APP_TOKEN_PREVIOUS=.*|APP_TOKEN_PREVIOUS=$NEW_PREVIOUS|" "$APP_ENV"
+  else
+    printf 'APP_TOKEN_PREVIOUS=%s\n' "$NEW_PREVIOUS" >> "$APP_ENV"
+  fi
+  chmod 600 "$APP_ENV"
+  APP_TOKEN="$NEW_TOKEN"
+  APP_TOKEN_PREVIOUS="$NEW_PREVIOUS"
+  warn "已轮换 APP_TOKEN，旧口令进入过渡期；原 .env 已备份到 $ENV_BACKUP"
+  warn "新的 APP_TOKEN：$NEW_TOKEN"
+fi
+
+# 单口令 → ^(口令)$；轮换过渡期 → ^(新口令|旧口令)$，让未升级的客户端不会立刻 401。
+TOKEN_REGEX="$(build_token_regex "$APP_TOKEN" "$APP_TOKEN_PREVIOUS")"
+[[ -n "$TOKEN_REGEX" ]] || die "无法生成口令正则，请检查 $APP_ENV"
+if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
+  warn "检测到 APP_TOKEN_PREVIOUS：反代将同时接受旧口令（轮换过渡期）"
+fi
 
 log "备份 $CADDYFILE"
 BACKUP="$CADDYFILE.backup-before-$DOMAIN-$(date +%Y%m%d%H%M%S)"
@@ -60,8 +117,9 @@ awk -v d="$DOMAIN" '
 
 # 2) 生成新站点块（占位符替换；token 为十六进制，转义 & 以防万一）
 BLOCK="$(mktemp)"
-TOKEN_ESCAPED="$(printf '%s' "$APP_TOKEN" | sed 's/[&\\]/\\&/g')"
-sed -e "s/__DOMAIN__/$DOMAIN/g" -e "s/__APP_TOKEN__/$TOKEN_ESCAPED/g" \
+TOKEN_ESCAPED="$(printf '%s' "$TOKEN_REGEX" | sed 's/[&\\]/\\&/g')"
+DOMAIN_ESCAPED="$(printf '%s' "$DOMAIN" | sed 's/[&\\]/\\&/g')"
+sed -e "s/__DOMAIN__/$DOMAIN_ESCAPED/g" -e "s/__APP_TOKEN_REGEX__/$TOKEN_ESCAPED/g" \
     /opt/pianke/server/deploy/caddy-pianke-tmdb.caddyfile > "$BLOCK"
 
 # 3) 插到最后一个顶层 site 的结束花括号之后，保证块级结构合法
@@ -107,6 +165,12 @@ fi
 rm -f "$TMP" "$BLOCK"
 log "Caddy 状态: $(systemctl is-active caddy)"
 
+# 5.5) 服务端 .env 可能在本次运行中被轮换过，重启上游让它加载新口令
+log "重启 pianke-tmdb 以加载最新口令"
+systemctl restart pianke-tmdb 2>/dev/null || warn "未能重启 pianke-tmdb，请手动执行 systemctl restart pianke-tmdb"
+sleep 1
+systemctl is-active --quiet pianke-tmdb && log "pianke-tmdb 已运行" || warn "pianke-tmdb 未处于运行状态，请查看 journalctl -u pianke-tmdb"
+
 # 6) 本机验收（用 Host 头绕过 DNS）
 log "本机经 Caddy 验收"
 echo -n "  /healthz（无需 token）: "
@@ -114,6 +178,10 @@ curl -s --max-time 10 -H "Host: $DOMAIN" http://127.0.0.1/healthz || echo "(失�
 echo
 echo -n "  带 token:   "
 curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 -H "Host: $DOMAIN" -H "x-app-token: $APP_TOKEN" "http://127.0.0.1/api/search?q=test"
+if [[ -n "$APP_TOKEN_PREVIOUS" ]]; then
+  echo -n "  旧 token（过渡期应为 200）: "
+  curl -s -o /dev/null -w '%{http_code}\n' --max-time 20 -H "Host: $DOMAIN" -H "x-app-token: ${APP_TOKEN_PREVIOUS%%,*}" "http://127.0.0.1/api/search?q=test"
+fi
 echo -n "  无 token:   "
 curl -s -o /dev/null -w '%{http_code}\n' --max-time 10 -H "Host: $DOMAIN" "http://127.0.0.1/api/search?q=test"
 

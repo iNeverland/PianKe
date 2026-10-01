@@ -3,6 +3,7 @@ import path from 'path';
 import { app } from 'electron';
 import { AppError } from '../../errors/AppError.js';
 import { ErrorCode } from '../../errors/errorCodes.js';
+import { authHeaders, ensureDeviceCredentials, forgetDeviceCredentials } from './credentials.js';
 import type { TmdbDetails, TmdbPosterResult, TmdbSearchResult } from '../../../shared/types/index.js';
 
 interface TmdbProxyConfig {
@@ -44,6 +45,34 @@ function getProxyConfig(): Required<Pick<TmdbProxyConfig, 'url'>> & TmdbProxyCon
   return config as Required<Pick<TmdbProxyConfig, 'url'>> & TmdbProxyConfig;
 }
 
+/**
+ * 带鉴权的 fetch：优先用设备凭据，拿不到则回退到随包分发的共享口令。
+ *
+ * 收到 401 时说明设备凭据可能已被服务端吊销（或服务端刚关闭了共享口令的数据访问），
+ * 因此清掉本地凭据重注册一次并只重试一次；仍失败就把原始响应交回调用方。
+ */
+async function authedFetch(
+  url: URL,
+  config: Required<Pick<TmdbProxyConfig, 'url'>> & TmdbProxyConfig,
+  init: { method?: string; body?: string; headers?: Record<string, string> } = {},
+): Promise<Response> {
+  const credentials = await ensureDeviceCredentials({ url: config.url, appToken: config.appToken });
+  const send = (headers: Record<string, string>) => fetch(url, {
+    method: init.method,
+    body: init.body,
+    headers: { ...(init.headers || {}), ...headers },
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  const response = await send(authHeaders(config, credentials));
+  if (response.status !== 401 || !credentials) return response;
+
+  forgetDeviceCredentials();
+  const retried = await ensureDeviceCredentials({ url: config.url, appToken: config.appToken });
+  if (!retried) return response;
+  return send(authHeaders(config, retried));
+}
+
 async function requestProxy<T>(pathname: string, search?: Record<string, string>): Promise<T> {
   const config = getProxyConfig();
   const url = new URL(pathname, config.url.endsWith('/') ? config.url : `${config.url}/`);
@@ -53,9 +82,7 @@ async function requestProxy<T>(pathname: string, search?: Record<string, string>
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      headers: config.appToken ? { 'x-app-token': config.appToken } : {},
-    });
+    response = await authedFetch(url, config, { headers: { accept: 'application/json' } });
   } catch (err) {
     throw new AppError(ErrorCode.TMDB_UNREACHABLE, '无法连接 TMDB 代理服务器', err);
   }
@@ -150,9 +177,7 @@ export async function getTmdbPoster(posterPath: string): Promise<TmdbPosterResul
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      headers: config.appToken ? { 'x-app-token': config.appToken } : {},
-    });
+    response = await authedFetch(url, config);
   } catch (err) {
     throw new AppError(ErrorCode.TMDB_UNREACHABLE, '无法下载 TMDB 海报', err);
   }
@@ -160,6 +185,10 @@ export async function getTmdbPoster(posterPath: string): Promise<TmdbPosterResul
 
   const contentType = response.headers.get('content-type') || 'image/jpeg';
   if (!contentType.startsWith('image/')) return { dataUrl: null };
+  // 与服务器端的 MAX_IMAGE_BYTES 呼应：避免异常响应把整张原图读进主进程内存
+  const contentLength = Number(response.headers.get('content-length') || 0);
+  if (contentLength > 10 * 1024 * 1024) return { dataUrl: null };
   const data = Buffer.from(await response.arrayBuffer());
+  if (data.length > 10 * 1024 * 1024) return { dataUrl: null };
   return { dataUrl: `data:${contentType};base64,${data.toString('base64')}` };
 }

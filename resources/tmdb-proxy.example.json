@@ -1,0 +1,5 @@
+{
+  "_comment": "模板文件：复制为同目录下的 tmdb-proxy.json 后填入真实值，或直接由 scripts/inject-tmdb-proxy.mjs 从环境变量生成。tmdb-proxy.json 已被 .gitignore 忽略，请勿提交真实令牌。",
+  "url": "https://tmdb.example.com",
+  "appToken": "用 openssl rand -hex 32 生成，且必须与服务器 .env 的 APP_TOKEN 完全一致"
+}

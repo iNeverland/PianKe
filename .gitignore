@@ -20,7 +20,14 @@ Thumbs.db
 .pianke-*-key.pub
 .env
 .env.*
+# 上面的 .env.* 会误伤可提交的模板文件，逐个放行
+!server/.env.example
 .vercel/
+
+# 客户端 TMDB 代理配置：含与服务端共享的 x-app-token，真实值绝不入库。
+# 由 scripts/inject-tmdb-proxy.mjs 在构建时从环境变量生成；
+# 模板见 resources/tmdb-proxy.example.json（已提交，只含占位值）。
+resources/tmdb-proxy.json
 
 # IDE local config
 .idea/

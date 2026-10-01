@@ -10,8 +10,25 @@ permissions:
   contents: write
 
 jobs:
+  secret-scan:
+    name: 密钥扫描
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 零依赖，不需要 npm ci：确认没有任何明文密钥或不该入库的文件进入本次提交
+      - name: 扫描明文密钥
+        run: node scripts/check-secrets.mjs
+
   build:
     name: ${{ matrix.name }} 安装包
+    needs: secret-scan
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

@@ -4,9 +4,11 @@
 # 就是这种情况，见 /etc/caddy/Caddyfile）。把这个 server 块追加到 Caddyfile 末尾即可，
 # 不要另外装 Nginx —— 两者会抢 80/443。
 #
-# 使用前替换两处占位符：
-#   __DOMAIN__       例：tmdb.example.com
-#   __APP_TOKEN__    与 /opt/pianke/server/.env 里的 APP_TOKEN 完全一致
+# 使用前替换占位符：
+#   __DOMAIN__           例：tmdb.example.com
+#   __APP_TOKEN_REGEX__  由 deploy-caddy.sh 从 /opt/pianke/server/.env 自动生成：
+#                        单口令 → ^(口令)$；轮换过渡期 → ^(新口令|旧口令)$
+#                        手工替换时切勿把占位符原样留在生产配置里（那样占位符本身就是有效口令）。
 #
 # Caddy 会自动为该域名申请并续期 Let's Encrypt 证书，无需 certbot。
 # 前提：该域名的 A 记录已指向本机公网 IP，且 80/443 可从公网访问。
@@ -23,10 +25,22 @@ __DOMAIN__ {
 		}
 	}
 
-	# 其余请求（/api/search、/api/details、/api/poster）都要带正确的 app token。
-	# 这不是强安全边界（token 在客户端里），真正的防线是限流与用量监控。
+	# 其余请求（/api/search、/api/details、/api/poster）都要带凭据。
+	# 两种凭据任一即可：
+	#   1) x-app-token     共享口令（旧客户端、以及新客户端的注册请求）
+	#   2) x-device-id     设备凭据，真正的校验在 Node 服务里做
+	# 这里对设备凭据只做「存在性」检查——反代无法验证设备口令，所以它只是一道
+	# 廉价预过滤，不构成安全边界；授权判定以服务端为准。
+	# 正则匹配而非等值比较，是为了轮换过渡期能同时接受新旧共享口令：
+	#   ^(新口令)$            —— 常态
+	#   ^(新口令|旧口令)$      —— 轮换期（旧客户端不会立刻 401）
+	# 设备头也用 header_regexp ".+" 而不是省略取值的 header，避免依赖
+	# 「省略 value 即表示字段存在」这一容易记错的语义。
 	handle {
-		@unauthorized not header X-App-Token "__APP_TOKEN__"
+		@unauthorized {
+			not header_regexp X-App-Token "__APP_TOKEN_REGEX__"
+			not header_regexp X-Device-Id ".+"
+		}
 		respond @unauthorized `{"error":"未授权访问"}` 401
 		reverse_proxy 127.0.0.1:8787
 	}

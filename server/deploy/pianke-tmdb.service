@@ -12,6 +12,12 @@ ExecStart=/usr/bin/node index.mjs
 # 敏感配置放在 .env（chmod 600），由 index.mjs 的 loadDotEnv() 自行加载
 EnvironmentFile=-/opt/pianke/server/.env
 
+# 设备凭据库的存放目录。systemd 会创建 /var/lib/pianke-tmdb 并把可写路径注入
+# $STATE_DIRECTORY，index.mjs 优先使用它；这样即使开了 ProtectSystem=strict
+# 也能原子写入 devices.json。停服后用 node device-admin.mjs 管理该库。
+StateDirectory=pianke-tmdb
+StateDirectoryMode=0700
+
 # 安全加固
 NoNewPrivileges=true
 PrivateTmp=true
