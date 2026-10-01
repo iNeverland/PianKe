@@ -38,8 +38,8 @@ let offlineSnapshot: Snapshot | null = null;
 let offlineSnapshotOwnerId: string | null = null;
 let offlineSnapshotRequest: Promise<Snapshot | null> | null = null;
 let offlineSnapshotRequestOwnerId: string | null = null;
-let cloudSyncQueued = false;
-let cloudSyncRunning = false;
+let cloudSyncTimer: ReturnType<typeof setTimeout> | null = null;
+let cloudSyncFirstQueuedAt = 0;
 let fileToken: { value: string; expiresAt: number } | null = null;
 let fileTokenRequest: Promise<string> | null = null;
 let cacheOwnerId: string | null = getCloudUser()?.id || null;
@@ -63,6 +63,32 @@ let allScreenshotsCache: { value: Map<string, ScreenshotInfo[]>; expiresAt: numb
 let mediaWarmRequest: Promise<void> | null = null;
 let mediaWarmOwnerId: string | null = null;
 const mediaObjectUrls = new Map<string, string>();
+
+/**
+ * 展示用 Blob URL 的上限。
+ *
+ * blob: URL 会一直持有对应 Blob，不 revoke 就不会被 GC。原先这张表只增不减，
+ * 唯一释放点是登出，因此浏览大库（数百海报 + 上千截图）后内存会持续上涨。
+ * Map 保持插入顺序，因此直接按顺序淘汰最早的条目。
+ * 上限取 300：远高于一屏到几屏的常用集合，正常浏览几乎不会触碰到；
+ * 已加载完成的 <img> 不受 revoke 影响，重新挂载时会经 fileUrl 重新取一次 URL。
+ */
+const MEDIA_OBJECT_URL_LIMIT = 300;
+
+function rememberMediaObjectUrl(key: string, url: string): string {
+  const previous = mediaObjectUrls.get(key);
+  if (previous && previous !== url) URL.revokeObjectURL(previous);
+  mediaObjectUrls.delete(key);
+  mediaObjectUrls.set(key, url);
+  while (mediaObjectUrls.size > MEDIA_OBJECT_URL_LIMIT) {
+    const oldestKey = mediaObjectUrls.keys().next().value;
+    if (oldestKey === undefined) break;
+    const oldestUrl = mediaObjectUrls.get(oldestKey);
+    mediaObjectUrls.delete(oldestKey);
+    if (oldestUrl) URL.revokeObjectURL(oldestUrl);
+  }
+  return url;
+}
 
 // 列表与统计不需要传输简介、演员等大字段；详情页仍通过 getOne 读取完整资料。
 // 首次同步保存完整文本资料，离线时才能浏览详情、日记和追剧记录。
@@ -98,24 +124,39 @@ function invalidateSnapshot(): void {
   snapshotGeneration++;
 }
 
+/** 写入后整库对账的合并窗口与最长等待（避免被连续写入一直推迟）。 */
+const CLOUD_SYNC_DEBOUNCE_MS = 2000;
+const CLOUD_SYNC_MAX_WAIT_MS = 8000;
+
 /**
- * 写入云端后异步落盘一份最新完整快照。先等待可能正在进行的旧读取结束，
- * 再按新的 generation 重拉，避免旧请求覆盖刚刚编辑的本地离线数据。
+ * 写入云端后排一次整库对账。
+ *
+ * 每个写操作都会先把服务端返回的记录**增量**写进内存与 IndexedDB（见 updateOfflineSnapshot），
+ * 所以"读到刚写的数据"并不依赖这里；这里只负责把**其它设备**的变更对账回来。
+ *
+ * 因此不需要每写一次就立刻重拉四个全量列表。原先的实现会让连续编辑（例如逐个改综艺
+ * 分段名，每次 blur 一次）触发同等次数的整库下载，库大时既卡又费流量。现在合并成一次，
+ * 并设最长等待上限，保证持续写入时也不会被无限推迟。
  */
 function scheduleCloudSync(): void {
-  cloudSyncQueued = true;
-  if (cloudSyncRunning) return;
-  cloudSyncRunning = true;
-  void (async () => {
-    while (cloudSyncQueued) {
-      cloudSyncQueued = false;
-      const pending = snapshotRequest;
-      if (pending) await pending.catch(() => {});
-      const ownerId = getCloudUser()?.id;
-      if (ownerId) await fetchRemoteSnapshot(ownerId).catch(() => {});
-    }
-    cloudSyncRunning = false;
-  })();
+  const now = Date.now();
+  if (cloudSyncFirstQueuedAt === 0) cloudSyncFirstQueuedAt = now;
+  if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+  const waited = now - cloudSyncFirstQueuedAt;
+  const delay = Math.max(0, Math.min(CLOUD_SYNC_DEBOUNCE_MS, CLOUD_SYNC_MAX_WAIT_MS - waited));
+  cloudSyncTimer = setTimeout(() => {
+    cloudSyncTimer = null;
+    cloudSyncFirstQueuedAt = 0;
+    void runCloudSync();
+  }, delay);
+}
+
+/** 等掉可能正在进行的旧读取，再按新的 generation 重拉，避免旧请求覆盖刚编辑的数据。 */
+async function runCloudSync(): Promise<void> {
+  const pending = snapshotRequest;
+  if (pending) await pending.catch(() => {});
+  const ownerId = getCloudUser()?.id;
+  if (ownerId) await fetchRemoteSnapshot(ownerId).catch(() => {});
 }
 
 /** 将刚完成的写操作立即反映到内存和 IndexedDB，关闭应用也不会丢掉这一次更新。 */
@@ -177,7 +218,12 @@ function clearCloudCaches(): void {
   offlineSnapshotOwnerId = null;
   offlineSnapshotRequest = null;
   offlineSnapshotRequestOwnerId = null;
-  cloudSyncQueued = false;
+  // 取消待执行的整库对账：切换账号后它会把新账号的数据拉成旧账号的
+  if (cloudSyncTimer) {
+    clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = null;
+  }
+  cloudSyncFirstQueuedAt = 0;
   for (const url of mediaObjectUrls.values()) URL.revokeObjectURL(url);
   mediaObjectUrls.clear();
 }
@@ -471,12 +517,18 @@ function toLocalDateString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function formDataWithFile(payload: Record<string, unknown>, field: string, file: File): FormData {
+/**
+ * 组装带文件的表单。
+ * `removeFile` 用于「显式移除」：PocketBase 以 `字段名-` 空值表示删除该文件，
+ * 缺了这个分支就只能上传、永远删不掉（见「移除海报」按钮）。
+ */
+function formDataWithFile(payload: Record<string, unknown>, field: string, file: File | null, removeFile = false): FormData {
   const form = new FormData();
   for (const [key, value] of Object.entries(payload)) {
     form.append(key, typeof value === 'object' ? JSON.stringify(value) : String(value));
   }
-  form.append(field, file);
+  if (file) form.append(field, file);
+  else if (removeFile) form.append(`${field}-`, '');
   return form;
 }
 
@@ -636,18 +688,14 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
     if (existingUrl) return existingUrl;
     const localBlob = await getOfflineMedia(ownerId, mediaKey).catch(() => null);
     if (localBlob) {
-      const localUrl = URL.createObjectURL(localBlob);
-      mediaObjectUrls.set(`${ownerId}:${mediaKey}`, localUrl);
-      return localUrl;
+      return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(localBlob));
     }
     // 截图原图按需保存，以控制本地空间；离线查看灯箱时仍优先给出已同步的缩略图。
     if (field === 'image' && !thumb) {
       const thumbnailKey = `${record.collectionName || 'screenshots'}:${record.id}:${filename}:${SCREENSHOT_THUMB_SIZE}`;
       const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
       if (thumbnailBlob) {
-        const localUrl = URL.createObjectURL(thumbnailBlob);
-        mediaObjectUrls.set(`${ownerId}:${mediaKey}`, localUrl);
-        return localUrl;
+        return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(thumbnailBlob));
       }
     }
     // 海报原图同样优先使用已同步的缩略图兜底，避免大图加载失败/缓慢时一片空白。
@@ -655,9 +703,7 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
       const thumbnailKey = `${record.collectionName || 'movies'}:${record.id}:${filename}:${POSTER_THUMB_SIZE}`;
       const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
       if (thumbnailBlob) {
-        const localUrl = URL.createObjectURL(thumbnailBlob);
-        mediaObjectUrls.set(`${ownerId}:${mediaKey}`, localUrl);
-        return localUrl;
+        return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(thumbnailBlob));
       }
     }
   }
@@ -681,15 +727,28 @@ async function cacheRemoteMedia(ownerId: string, mediaKey: string, remoteUrl: st
 }
 
 /**
- * 首次完整同步后预热所有用于界面展示的缩略图。原始截图继续按需下载，避免大型
- * 截图库占满 IndexedDB；断网打开灯箱时会自动使用这里的缩略图兜底。
+ * 首次完整同步后预热用于界面展示的缩略图。原始截图继续按需下载，避免大型截图库
+ * 占满 IndexedDB；断网打开灯箱时会自动使用这里的缩略图兜底。
+ *
+ * 有上限、也尊重省流量设置：原先是无条件全量预热，云端有几千张截图时用户只是
+ * 打开首页，后台就会跑掉几十上百 MB 下行流量与等量的 IndexedDB 写入。
  */
+const MEDIA_WARM_LIMIT = 200;
+
 function warmMediaThumbnails(snapshot: Snapshot, ownerId: string): void {
   if (mediaWarmRequest && mediaWarmOwnerId === ownerId) return;
-  const jobs: Array<{ record: CloudRecord; field: 'poster' | 'image'; thumb: string }> = [
+
+  // 数据节省模式，或链路只有 2G/3G 时不预热（navigator.connection 是非标准 API）
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+  if (connection?.saveData) return;
+  if (connection?.effectiveType && /^(slow-2g|2g|3g)$/.test(connection.effectiveType)) return;
+
+  const all: Array<{ record: CloudRecord; field: 'poster' | 'image'; thumb: string }> = [
     ...snapshot.movies.filter((record) => Boolean(stringField(record, 'poster'))).map((record) => ({ record, field: 'poster' as const, thumb: POSTER_THUMB_SIZE })),
     ...snapshot.screenshots.filter((record) => Boolean(stringField(record, 'image'))).map((record) => ({ record, field: 'image' as const, thumb: SCREENSHOT_THUMB_SIZE })),
   ];
+  // 新的排前面：库比上限大时，优先保证最近添加的内容离线可见
+  const jobs = all.length > MEDIA_WARM_LIMIT ? all.slice(-MEDIA_WARM_LIMIT) : all;
   const request = (async () => {
     const token = await getProtectedFileToken();
     for (let offset = 0; offset < jobs.length; offset += MEDIA_WARM_CONCURRENCY) {
@@ -1302,6 +1361,18 @@ function varietyProgressReviews(entries: DiaryEntry[], mediaType: string, segmen
   return display;
 }
 
+const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/**
+ * 观影时长口径（与统计页保持一致）：只计入「已看完」，剧集/综艺按 片长 × 总集数。
+ * 抽出来是为了让月度总结与总览用同一把尺子 —— 原先月度总结直接写死 0。
+ */
+function watchedMinutes(movies: MovieMetadata[]): number {
+  return movies.reduce((total, movie) => (
+    movie.status === '已看完' ? total + movie.runtime * (movie.progress?.totalEpisodes || 1) : total
+  ), 0);
+}
+
 async function buildDashboard(): Promise<StatsDashboard> {
   const snapshot = await loadSnapshot();
   const movies = snapshot.movies.map(toMetadata);
@@ -1395,9 +1466,12 @@ export const cloudApi = {
       const previous = toMetadata(before);
       const payload = publicFields(data);
       const poster = posterFile(data);
+      // posterBase64 === null 是「显式移除海报」的信号（MovieForm 的移除按钮），
+      // 与 undefined（不改动）区分开，否则移除后保存会静默保留原海报。
+      const removePoster = data.posterBase64 === null;
       let updated: CloudMovieRecord;
-      if (poster) {
-        updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, formDataWithFile(payload, 'poster', poster)));
+      if (poster || removePoster) {
+        updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, formDataWithFile(payload, 'poster', poster, removePoster)));
       } else {
         updated = await cloudWrite(() => pocketbase.collection('movies').update<CloudMovieRecord>(id, payload));
       }
@@ -1554,7 +1628,7 @@ export const cloudApi = {
       }
 
       const months = new Map<string, Map<string, { date: string; weekday: string; items: Array<DiaryEntry & { movieId: string; movieTitle: string; movieThumbPath?: string }> }>>();
-      for (const { entry, movie } of all) { const month = entry.watchDate.slice(0, 7); const days = months.get(month) || new Map(); const day = days.get(entry.watchDate) || { date: entry.watchDate, weekday: ['周日','周一','周二','周三','周四','周五','周六'][parseLocalDate(entry.watchDate).getDay()], items: [] }; const displayEntry = displayReviewByEntry.has(entry.id) ? { ...entry, review: displayReviewByEntry.get(entry.id) } : entry; day.items.push({ ...displayEntry, movieId: movie.id, movieTitle: movie.title, movieThumbPath: movie.posterThumbPath }); days.set(entry.watchDate, day); months.set(month, days); }
+      for (const { entry, movie } of all) { const month = entry.watchDate.slice(0, 7); const days = months.get(month) || new Map(); const parsedDate = parseLocalDate(entry.watchDate); const day = days.get(entry.watchDate) || { date: entry.watchDate, weekday: parsedDate ? WEEKDAYS[parsedDate.getDay()] : '', items: [] }; const displayEntry = displayReviewByEntry.has(entry.id) ? { ...entry, review: displayReviewByEntry.get(entry.id) } : entry; day.items.push({ ...displayEntry, movieId: movie.id, movieTitle: movie.title, movieThumbPath: movie.posterThumbPath }); days.set(entry.watchDate, day); months.set(month, days); }
       return [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).map(([month, days]) => ({ month, days: [...days.values()].sort((a, b) => b.date.localeCompare(a.date)).map((day) => ({ ...day, items: sortByMomentDesc(day.items) })) }));
     },
   },
@@ -1596,7 +1670,25 @@ export const cloudApi = {
     byCountry: async (): Promise<StatsByCountry[]> => (await buildDashboard()).byCountry,
     diaryRatingDist: async () => (await buildDashboard()).diaryRatingDist,
     monthlyTrend: async (): Promise<StatsMonthlyTrend[]> => (await buildDashboard()).monthlyTrend,
-    monthSummary: async (year: number, month: number): Promise<MonthSummary> => { const monthText = `${year}-${String(month).padStart(2, '0')}`; const dashboard = await buildDashboard(); const movies = (await summaries()).filter((movie) => (movie.latestWatchDate || '').startsWith(monthText)); return { year, month, totalMovies: movies.length, totalHours: 0, avgRating: dashboard.overview.avgPersonalRating, topGenres: dashboard.overview.mostWatchedGenre, movies, diaryEntries: (await loadSnapshot()).diaries.map(toDiary).filter((entry) => entry.watchDate.startsWith(monthText)) }; },
+    monthSummary: async (year: number, month: number): Promise<MonthSummary> => {
+      const monthText = `${year}-${String(month).padStart(2, '0')}`;
+      const [dashboard, movies, snapshot] = await Promise.all([buildDashboard(), summaries(), loadSnapshot()]);
+      const inMonth = movies.filter((movie) => (movie.latestWatchDate || '').startsWith(monthText));
+      // 时长的口径与总览一致（只算「已看完」，剧集按 片长 × 总集数）：
+      // MonthSummary 里只有轻量摘要，拿不到 runtime，所以回到快照取完整记录。
+      const monthIds = new Set(inMonth.map((movie) => movie.id));
+      const minutes = watchedMinutes(snapshot.movies.map(toMetadata).filter((movie) => monthIds.has(movie.id)));
+      return {
+        year,
+        month,
+        totalMovies: inMonth.length,
+        totalHours: Math.round((minutes / 60) * 10) / 10,
+        avgRating: dashboard.overview.avgPersonalRating,
+        topGenres: dashboard.overview.mostWatchedGenre,
+        movies: inMonth,
+        diaryEntries: snapshot.diaries.map(toDiary).filter((entry) => entry.watchDate.startsWith(monthText)),
+      };
+    },
     diaryCalendar: async (days: number): Promise<DiaryCalendarEntry[]> => { const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days); const cutoffText = toLocalDateString(cutoff); const map = new Map<string, Set<string>>(); for (const entry of (await loadSnapshot()).diaries) { const date = stringField(entry, 'watchDate'); if (date >= cutoffText) { const movies = map.get(date) || new Set<string>(); movies.add(stringField(entry, 'movie')); map.set(date, movies); } } return [...map.entries()].map(([date, movies]) => ({ date, count: movies.size })); },
   },
 };

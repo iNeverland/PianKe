@@ -6,24 +6,20 @@
     <meta name="description" content="PianKe 片刻 — 个人影视日记" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="color-scheme" content="light dark" />
+    <!--
+      移动端（Capacitor WebView）没有 Electron 主进程那层响应头 CSP，这里用 meta 补齐。
+      必须是「Electron 生产 CSP 的超集」，否则两者取交集后会收紧桌面端行为：
+      各指令都带上 file:，font-src 覆盖响应头 default-src 的回退，script-src 里的
+      'unsafe-eval' 只为 Vite dev server 保留（Electron 生产响应头没有它，取交集后
+      在打包产物里实际是禁用的）。
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' file:; script-src 'self' file: 'unsafe-eval'; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob: https:; font-src 'self' file: data:; connect-src 'self' file: https://pb.astara.space http://localhost:5173 ws://localhost:5173; object-src 'none'; base-uri 'none'"
+    />
     <title>PianKe</title>
-    <script>
-      /*
-       * 首屏前确定主题：避免浅色主题下的暗色闪烁 / 深色主题下的白色闪烁（WCAG 无需，但属 HIG 体验项）。
-       * 与 src/App.tsx、src/pages/Settings 使用同一 localStorage 键（film-log-theme）。
-       * 同时把 color-scheme 固定到实际主题，使原生控件、滚动条与自动填充跟随应用主题而非仅跟随系统。
-       */
-      (function () {
-        var stored = null;
-        try { stored = localStorage.getItem('film-log-theme'); } catch (e) { /* 隐私模式等场景忽略 */ }
-        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        var dark = stored === 'dark' || (stored !== 'light' && prefersDark);
-        if (stored === 'dark' || stored === 'light') {
-          document.documentElement.setAttribute('data-theme', stored);
-        }
-        document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
-      })();
-    </script>
+    <!-- 主题引导必须是外部脚本：生产 CSP 是 script-src 'self' file:，内联脚本会被拒绝执行（已实测） -->
+    <script src="./theme-boot.js"></script>
     <style>
       /* 首屏关键 CSS：避免白屏与主题闪烁 */
       html, body, #root {

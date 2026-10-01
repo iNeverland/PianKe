@@ -21,8 +21,17 @@ export function getLocalTimeStr(): string {
  * 安全解析 YYYY-MM-DD 为本地日期。
  * new Date("2026-07-04") 被 ECMAScript 规范强制解析为 UTC，在不同时区下
  * getDay() 结果可能错误。此函数始终以本地时间构造 Date。
+ *
+ * 解析不出来时返回 null，而不是 Invalid Date：调用方拿 Invalid Date 去 getDay()
+ * 会得到 NaN，最终渲染成 undefined（日记里的星期曾因此显示为空白）。
+ * 历史数据中 watchDate 为空串的情况是真实存在的。
  */
-export function parseLocalDate(day: string): Date {
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d);
+export function parseLocalDate(day: string): Date | null {
+  const parts = String(day || '').split('-');
+  if (parts.length !== 3) return null;
+  const [y, m, d] = parts.map(Number);
+  if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const date = new Date(y, m - 1, d);
+  return Number.isNaN(date.getTime()) ? null : date;
 }

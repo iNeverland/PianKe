@@ -221,8 +221,17 @@ export default function Home() {
 
   async function handleStatusChange() {
     try {
-      const recent = await api.library.getRecentWatches(getRecentDays());
+      // 卡片上改状态后，「全部影视」与搜索结果里那份旧对象也要一起更新，
+      // 否则角标与筛选项会停在改之前的状态，直到离开页面重进。
+      const [summary, recent] = await Promise.all([
+        api.library.getSummary(),
+        api.library.getRecentWatches(getRecentDays()),
+      ]);
+      setAllMovies(summary);
       setRecentMovies(recent);
+      setSearchResults((prev) => (prev
+        ? prev.map((movie) => summary.find((item) => item.id === movie.id) ?? movie)
+        : prev));
     } catch { /* 静默 */ }
   }
 

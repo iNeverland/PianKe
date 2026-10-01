@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDeviceStore } from './devices.mjs';
+import { createLruCache } from './cache.mjs';
 
 const TMDB_API = 'https://api.themoviedb.org/3';
 const TMDB_IMG = 'https://image.tmdb.org/t/p';
@@ -127,10 +128,18 @@ async function readJsonBody(req, limit = 8 * 1024) {
   return JSON.parse(Buffer.concat(chunks).toString('utf-8'));
 }
 
-// 简单的进程内缓存：结果缓存在内存，进程重启后失效。
+// 进程内 LRU 缓存：结果缓存在内存，进程重启后失效。
 // 若部署在多实例/需要持久化，可换成 Redis 或文件缓存。
-const cache = new Map();
+// 实现见 cache.mjs：必须有上界，否则随机 query 与海报 Buffer 都能把内存撑爆。
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
+const cache = createLruCache({
+  ttlMs: CACHE_TTL,
+  maxEntries: Number(process.env.CACHE_MAX_ENTRIES || 500),
+  maxBytes: Number(process.env.CACHE_MAX_BYTES || 64 * 1024 * 1024),
+  // 只有海报那种 { buffer, type } 才计入字节数，纯 JSON 记 0
+  sizeOf: (body) => (body && body.buffer ? body.buffer.length : 0),
+});
+
 const rateBuckets = new Map();
 const RATE_WINDOW = 60 * 1000;
 const RATE_LIMIT = 60;
@@ -138,20 +147,6 @@ const RATE_LIMIT = 60;
 // 否则直连时攻击者可通过伪造该头绕过限流。
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-
-function cacheGet(key) {
-  const hit = cache.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.time > CACHE_TTL) {
-    cache.delete(key);
-    return null;
-  }
-  return hit.body;
-}
-
-function cacheSet(key, body) {
-  cache.set(key, { time: Date.now(), body });
-}
 
 function clientIp(req) {
   const forwarded = TRUST_PROXY ? req.headers['x-forwarded-for'] : undefined;
@@ -291,6 +286,8 @@ const server = http.createServer(async (req, res) => {
         deviceEnrollment: DEVICE_ENROLLMENT,
         legacyTokenDataAccess: LEGACY_TOKEN_DATA_ACCESS,
         devices: devices.count(),
+        cacheEntries: cache.size,
+        cacheBytes: cache.bytes,
         uptime: Math.round(process.uptime()),
       });
     }
@@ -331,11 +328,11 @@ const server = http.createServer(async (req, res) => {
       const q = url.searchParams.get('q') || '';
       if (!q.trim()) return sendJson(res, 400, { error: '缺少 q 参数' });
       const cacheKey = 'search:' + q.trim();
-      const cached = cacheGet(cacheKey);
+      const cached = cache.get(cacheKey);
       if (cached) return sendJson(res, 200, cached);
       const data = await proxyToTmdb('/search/multi', { query: q.trim() });
       const body = { results: normalizeSearch(data.results) };
-      cacheSet(cacheKey, body);
+      cache.set(cacheKey, body);
       return sendJson(res, 200, body);
     }
 
@@ -349,11 +346,11 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: 'mediaType 仅支持 movie 或 tv' });
       }
       const cacheKey = 'details:' + mediaType + ':' + id;
-      const cached = cacheGet(cacheKey);
+      const cached = cache.get(cacheKey);
       if (cached) return sendJson(res, 200, cached);
       const data = await proxyToTmdb(`/${mediaType}/${id}`, { append_to_response: 'credits' });
       const body = { result: normalizeDetails(data, mediaType) };
-      cacheSet(cacheKey, body);
+      cache.set(cacheKey, body);
       return sendJson(res, 200, body);
     }
 
@@ -367,7 +364,7 @@ const server = http.createServer(async (req, res) => {
         return sendJson(res, 400, { error: '海报参数无效' });
       }
       const cacheKey = 'poster:' + width + ':' + imgPath;
-      const cached = cacheGet(cacheKey);
+      const cached = cache.get(cacheKey);
       if (cached && cached.buffer) {
         return sendImage(res, cached.buffer, cached.type);
       }
@@ -378,7 +375,7 @@ const server = http.createServer(async (req, res) => {
       const buffer = Buffer.from(await imgRes.arrayBuffer());
       if (buffer.length > MAX_IMAGE_BYTES) return sendJson(res, 413, { error: '海报文件过大' });
       const type = imgRes.headers.get('content-type') || 'image/jpeg';
-      cacheSet(cacheKey, { buffer, type });
+      cache.set(cacheKey, { buffer, type });
       return sendImage(res, buffer, type);
     }
 

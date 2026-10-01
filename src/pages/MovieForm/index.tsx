@@ -20,6 +20,19 @@ const GENRE_OPTIONS = [
   '儿童', '新闻', '脱口秀', '肥皂剧', '政治', '电视电影',
 ];
 
+/**
+ * 数字输入的统一收口：空串、非数字（NaN）、越界值都收敛到合法区间。
+ * 不做这一步的话 `Number('abc')` 会得到 NaN，JSON 序列化后变成 null 直接发给云端，
+ * 用户只会看到一句「保存失败」。
+ */
+function clampNumber(raw: string, min: number, max: number, fallback: number, decimals = 0): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  const factor = 10 ** decimals;
+  const rounded = Math.round(value * factor) / factor;
+  return Math.min(max, Math.max(min, rounded));
+}
+
 const EMPTY_FORM = {
   title: '',
   titleOriginal: '',
@@ -45,6 +58,8 @@ export default function MovieForm() {
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [posterBase64, setPosterBase64] = useState<string | undefined>(undefined);
+  /** 用户点了「移除」：保存时以 null 明确告诉云端删除海报（undefined 表示不改动）。 */
+  const [posterRemoved, setPosterRemoved] = useState(false);
   const [posterExt, setPosterExt] = useState<string>('.jpg');
   const [posterPreview, setPosterPreview] = useState<string | null>(null);
   const [existingPosterUrl, setExistingPosterUrl] = useState<string | null>(null);
@@ -114,8 +129,8 @@ export default function MovieForm() {
       synopsis: form.synopsis, rating: form.rating,
       status: form.status, progress: form.progress,
     });
-    return current !== initialForm || posterBase64 !== undefined;
-  }, [form, initialForm, posterBase64]);
+    return current !== initialForm || posterBase64 !== undefined || posterRemoved;
+  }, [form, initialForm, posterBase64, posterRemoved]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -149,6 +164,7 @@ export default function MovieForm() {
       setPosterExt(ext);
       setPosterPreview(dataUrl);
       setExistingPosterUrl(null);
+      setPosterRemoved(false); // 重新选了图，撤销之前的「移除」意图
     };
     reader.onerror = () => showErrorToast('读取图片失败，请重试');
     reader.readAsDataURL(file);
@@ -191,6 +207,8 @@ export default function MovieForm() {
     setPosterExt('.jpg');
     setPosterPreview(null);
     setExistingPosterUrl(null);
+    // 编辑已有海报的影视时才需要通知云端删除；新建时没有可删的东西
+    setPosterRemoved(isEditing);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
@@ -277,7 +295,8 @@ export default function MovieForm() {
       const movieData = {
         ...form,
         cast: form.cast ? form.cast.split(/[、,，/]/).map((s: string) => s.trim()).filter(Boolean) : [],
-        posterBase64: posterBase64 || undefined,
+        // null = 显式移除海报，undefined = 不改动（云端据此决定是否发送 poster-）
+        posterBase64: posterRemoved ? null : (posterBase64 || undefined),
         posterExt: posterBase64 ? posterExt : undefined,
       };
       if (isEditing && id) {
@@ -444,12 +463,9 @@ export default function MovieForm() {
                 <CustomSelect
                   value={form.status}
                   onChange={(v) => {
-                    const status = v as WatchStatus;
-                    setForm({
-                      ...form,
-                      status,
-                      progress: status === '想看' && form.progress ? { ...form.progress, episode: 0 } : form.progress,
-                    });
+                    // 只改状态，不再顺手把已看集数清零：那是静默的数据丢失，
+                    // 用户改回「在看」也找不回来。
+                    setForm({ ...form, status: v as WatchStatus });
                   }}
                   options={[
                     { label: '已看完', value: '已看完' },
@@ -466,12 +482,12 @@ export default function MovieForm() {
             <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="form-label" htmlFor="form-runtime">片长</label>
-                <input id="form-runtime" type="number" value={form.runtime || ''} onChange={(e) => setForm({ ...form, runtime: Number(e.target.value) })} className="form-input" placeholder="169分钟" />
+                <input id="form-runtime" type="number" min="0" max="10000" value={form.runtime || ''} onChange={(e) => setForm({ ...form, runtime: clampNumber(e.target.value, 0, 10000, 0) })} className="form-input" placeholder="169分钟" />
               </div>
               <div>
                 <label className="form-label" htmlFor="form-rating">评分</label>
                 <div className="rating-input-wrap">
-                  <input id="form-rating" type="number" step="0.1" min="0" max="10" value={form.rating || ''} onChange={(e) => setForm({ ...form, rating: Number(e.target.value) })} className="form-input flex-1" placeholder="9.4" />
+                  <input id="form-rating" type="number" step="0.1" min="0" max="10" value={form.rating || ''} onChange={(e) => setForm({ ...form, rating: clampNumber(e.target.value, 0, 10, 0, 1) })} className="form-input flex-1" placeholder="9.4" />
                   {form.rating > 0 && (
                     <span className="rating-stars-preview" title={`${form.rating} 分`}>
                       {(() => {

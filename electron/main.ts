@@ -65,7 +65,7 @@ app.whenReady().then(() => {
           process.env.VITE_DEV_SERVER_URL
             // 海报、截图与头像从 IndexedDB 读取时会以 blob: URL 呈现。它们仅来自
             // 当前账号写入的本地缓存，必须显式放行，否则会出现卡片留白。
-            ? "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:5173; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:5173 https://pb.astara.space"
+            ? "default-src 'self' 'unsafe-eval' 'unsafe-inline' http://localhost:5173; img-src 'self' data: blob: https:; connect-src 'self' http://localhost:5173 ws://localhost:5173 https://pb.astara.space"
             // 生产环境从 file:// 加载：Chromium 对 file:// 文档的 'self' 会按独立
             // 源处理，显式放行 file: 才能稳定加载 dist 内的脚本与本地资源。
             : "default-src 'self' file:; script-src 'self' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data: blob: https:; connect-src https://pb.astara.space",
