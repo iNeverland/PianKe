@@ -36,7 +36,9 @@ function createWindow(): void {
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
-  app.quit();
+  // 必须立刻结束进程。仅调用 app.quit() 是不够的：它是异步的，下面的 whenReady
+  // 回调仍会执行，于是第二个实例照样建窗口、抢注册全局快捷键、覆盖 IPC 处理器。
+  app.exit(0);
 } else {
   app.on('second-instance', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {

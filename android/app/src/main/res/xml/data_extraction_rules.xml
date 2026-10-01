@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  备份与迁移规则（Android 12 / API 31+）。
+
+  allowBackup="false" 已经关闭了云备份；本文件再显式排除设备到设备（D2D）迁移，
+  因为 Android 12 起 allowBackup=false 不必然覆盖 D2D，而本机 IndexedDB 里存着
+  明文影评、短评与海报/截图 Blob，不应该被迁移到新设备上。
+
+  API 30 及以下不认识本属性，由 allowBackup="false" 兜住。
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

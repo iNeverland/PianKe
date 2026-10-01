@@ -552,6 +552,65 @@ async function compressScreenshotForUpload(dataUrl: string, maxEdge = 1920, qual
   }
 }
 
+/**
+ * 文件版压缩：与 compressScreenshotForUpload 同样的「超长边缩放 + 转 JPEG」策略，
+ * 但全程走 Blob + Canvas，不产生 base64 中间串，也不把原图整份复制到内存。
+ *
+ * 为什么需要它：base64 路径下同一张图会同时存在 3 份（base64 字符串、atob 结果、
+ * Uint8Array 拷贝）。批量上传大图时这是移动端 WebView OOM、桌面端渲染进程被杀
+ * （随后自动 reload，未保存的表单输入全丢）的主要来源。
+ */
+async function compressImageFileForUpload(file: File, maxEdge = 1920, quality = 0.85): Promise<Blob> {
+  if (!file.type.startsWith('image/')) return file;
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('decode failed'));
+      image.src = objectUrl;
+    });
+    const scale = Math.min(1, maxEdge / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale >= 1) return file; // 已经足够小，不做处理
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    return blob ?? file;
+  } catch {
+    return file; // 压缩失败不影响上传，原样发送
+  } finally {
+    // 图像已解码并绘制完毕，可以安全释放
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+/** 截图上传成功后的统一收尾：失效缓存、更新本地快照、预热缩略图。 */
+function afterScreenshotUpload(movieId: string, created: CloudRecord): void {
+  invalidateSnapshot();
+  scheduleCloudSync();
+  screenshotRecordCache.set(created.id, created);
+  updateOfflineSnapshot((snapshot) => ({ ...snapshot, screenshots: [...snapshot.screenshots, created] }));
+  screenshotListCache.delete(movieId);
+  allScreenshotsCache = null;
+  // 上传成功后立即预热新截图的缩略图：触发服务端生成并缓存到本地 IndexedDB，
+  // 让照片墙/详情页无需再等首次缩略图请求，秒开显示。
+  void (async () => {
+    try {
+      const ownerId = getCloudUser()?.id;
+      if (!ownerId) return;
+      const token = await getProtectedFileToken();
+      const remoteUrl = pocketbase.files.getURL({ ...created, collectionName: 'screenshots' }, created.id, { token, thumb: SCREENSHOT_THUMB_SIZE });
+      await cacheRemoteMedia(ownerId, `screenshots:${created.id}:${created.id}:${SCREENSHOT_THUMB_SIZE}`, remoteUrl);
+    } catch {
+      // 预热失败不影响上传结果；页面仍会按需加载缩略图。
+    }
+  })();
+}
+
 async function getProtectedFileToken(): Promise<string> {
   if (fileToken && fileToken.expiresAt > Date.now()) return fileToken.value;
   if (!fileTokenRequest) {
@@ -1415,25 +1474,25 @@ export const cloudApi = {
       const compressedExt = mime === 'image/png' ? '.png' : mime === 'image/webp' ? '.webp' : '.jpg';
       const form = new FormData(); form.append('owner', requireUserId()); form.append('movie', movieId); form.append('image', new File([bytes], `screenshot${compressedExt}`, { type: mime }));
       const created = await cloudWrite(() => pocketbase.collection('screenshots').create<CloudRecord>(form));
-      invalidateSnapshot();
-      scheduleCloudSync();
-      screenshotRecordCache.set(created.id, created);
-      updateOfflineSnapshot((snapshot) => ({ ...snapshot, screenshots: [...snapshot.screenshots, created] }));
-      screenshotListCache.delete(movieId);
-      allScreenshotsCache = null;
-      // 上传成功后立即预热新截图的缩略图：触发服务端生成并缓存到本地 IndexedDB，
-      // 让照片墙/详情页无需再等首次缩略图请求，秒开显示。
-      void (async () => {
-        try {
-          const ownerId = getCloudUser()?.id;
-          if (!ownerId) return;
-          const token = await getProtectedFileToken();
-          const remoteUrl = pocketbase.files.getURL({ ...created, collectionName: 'screenshots' }, created.id, { token, thumb: SCREENSHOT_THUMB_SIZE });
-          await cacheRemoteMedia(ownerId, `screenshots:${created.id}:${created.id}:${SCREENSHOT_THUMB_SIZE}`, remoteUrl);
-        } catch {
-          // 预热失败不影响上传结果；页面仍会按需加载缩略图。
-        }
-      })();
+      afterScreenshotUpload(movieId, created);
+      return cloudApi.movie.listScreenshots(movieId);
+    },
+    /**
+     * 文件直传（批量上传、粘贴图片走这条）：不经过 base64，内存占用从「3 份副本」
+     * 降到「1 份原始 File + 1 份压缩结果」，且压缩结果只在真的更小时才使用。
+     */
+    addScreenshotFile: async (movieId: string, file: File): Promise<ScreenshotInfo[]> => {
+      const optimized = await compressImageFileForUpload(file);
+      const useOriginal = optimized.size >= file.size;
+      const payload: Blob = useOriginal ? file : optimized;
+      const baseName = (file.name || 'screenshot').replace(/\.[^.]+$/, '') || 'screenshot';
+      const name = useOriginal ? (file.name || 'screenshot.jpg') : `${baseName}.jpg`;
+      const form = new FormData();
+      form.append('owner', requireUserId());
+      form.append('movie', movieId);
+      form.append('image', new File([payload], name, { type: payload.type || 'image/jpeg' }));
+      const created = await cloudWrite(() => pocketbase.collection('screenshots').create<CloudRecord>(form));
+      afterScreenshotUpload(movieId, created);
       return cloudApi.movie.listScreenshots(movieId);
     },
     deleteScreenshot: async (movieId: string, screenshotId: string): Promise<ScreenshotInfo[]> => {

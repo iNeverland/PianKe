@@ -113,6 +113,9 @@ export default function App() {
       if (!ok) {
         console.warn('[screenshot] shortcut registration failed:', accelerator);
       }
+    }).catch((err) => {
+      // 主进程抛异常（非法组合键等）也要吞掉：这里没有 catch 会变成未处理的 Promise 拒绝
+      console.warn('[screenshot] shortcut registration error:', err);
     });
   }, [libraryLoaded]);
 

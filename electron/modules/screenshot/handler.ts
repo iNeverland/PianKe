@@ -36,8 +36,16 @@ export function unregisterScreenshotShortcut(): void {
 }
 
 export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainWindowGetter): void {
-  ipcMain.handle('shortcut:register', (event, accelerator: string) => {
+  // 只接受我们自己的 toAccelerator() 能生成的形式，且必须带至少一个修饰键
+  // （否则会出现把单个字母抢成全局快捷键的情况）。渲染进程传入非法串时
+  // globalShortcut.register 会抛异常，而抛异常会让渲染侧的 then 不执行。
+  const ACCELERATOR_PATTERN = /^(?:(?:Ctrl|Shift|Alt|Option|Command|Cmd|CommandOrControl|Meta|Super)\+)+[A-Za-z0-9]$/;
+
+  ipcMain.handle('shortcut:register', (event, accelerator: unknown) => {
     assertTrustedSender(event);
+    if (typeof accelerator !== 'string' || !ACCELERATOR_PATTERN.test(accelerator)) {
+      throw new Error('非法的快捷键格式');
+    }
     return registerScreenshotShortcut(accelerator, getMainWindow);
   });
   ipcMain.handle('shortcut:unregister', (event) => {

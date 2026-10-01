@@ -88,8 +88,12 @@ export default function Settings() {
             setScreenshotShortcut(newConfig);
             showToast('快捷键已更新');
           }
-          setCapturing(false);
-        });
+        }).catch(() => {
+          // 主进程抛异常（组合键非法、窗口已销毁等）时 then 不会执行，
+          // 若不在这里复位就会永久卡在「等待按键…」，且旧快捷键已被注销。
+          showErrorToast('快捷键注册失败，请重试或换一个组合');
+          restorePreviousShortcut();
+        }).finally(() => setCapturing(false));
       } else {
         // 非桌面端没有全局快捷键，仅保存本地配置。
         previousShortcutRef.current = null;

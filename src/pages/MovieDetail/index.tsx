@@ -124,16 +124,11 @@ export default function MovieDetail() {
       for (const item of Array.from(items)) {
         if (!item.type.startsWith('image/')) continue;
         e.preventDefault();
-        const blob = item.getAsFile();
-        if (!blob) continue;
-        const dataUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(blob);
-        });
-        const ext = '.' + (item.type.split('/')[1] || 'png');
+        const file = item.getAsFile();
+        if (!file) continue;
+        // 直传 File：不再走 base64（省掉两份额外副本）
         try {
-          const updated = await api.movie.addScreenshot(id, dataUrl, ext);
+          const updated = await api.movie.addScreenshotFile(id, file);
           setScreenshots(updated);
         } catch (err: any) {
           showErrorToast(err.message || '上传失败');
@@ -431,26 +426,23 @@ export default function MovieDetail() {
     }
     setUploadingScreenshots(true);
     let failures = 0;
+    // 直传 File：省掉 base64 的三份内存副本，避免批量大图把渲染进程撑爆
+    // （移动端 WebView OOM；桌面端 render-process-gone 后自动 reload，未保存的表单输入会丢）。
     const upload = async (file: File) => {
       try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(new Error(`无法读取 ${file.name}`));
-          reader.readAsDataURL(file);
-        });
-        const ext = '.' + ((file.name.split('.').pop()) || 'jpg');
-        await api.movie.addScreenshot(id, dataUrl, ext);
+        await api.movie.addScreenshotFile(id, file);
       } catch {
         failures++;
       }
     };
     try {
-      for (let offset = 0; offset < validFiles.length; offset += 3) {
-        await Promise.all(validFiles.slice(offset, offset + 3).map(upload));
+      // 并发 2 而不是 3：压缩与上传都会短时占用较多内存，降低峰值比提速更重要。
+      for (let offset = 0; offset < validFiles.length; offset += 2) {
+        await Promise.all(validFiles.slice(offset, offset + 2).map(upload));
       }
       setScreenshots(await api.movie.listScreenshots(id));
-      showErrorToast(failures ? `${validFiles.length - failures} 张已上传，${failures} 张失败` : `已上传 ${validFiles.length} 张截图`);
+      if (failures) showErrorToast(`${validFiles.length - failures} 张已上传，${failures} 张失败`);
+      else showToast(`已上传 ${validFiles.length} 张截图`);
     } finally {
       setUploadingScreenshots(false);
       e.target.value = '';
@@ -917,13 +909,23 @@ export default function MovieDetail() {
         const groups = groupSegments(segs);
         const commitSegs = (newSegs: ProgressSegment[]) => {
           setLocalSegs(newSegs);
+          // 回滚目标是「最后一次被服务端确认的状态」，而不是调用前的本地状态：
+          // 编辑分段名时 onChange 已经乐观改过本地值，拿本地值回滚会回滚到半成品。
+          const confirmed = (movie.progress?.segments ?? []).map((segment) => ({ ...segment }));
           void (async () => {
-            const updated = await api.movie.update(id!, {
-              ...movie,
-              progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.label.trim()).length, totalEpisodes: newSegs.length },
-            });
-            setMovie(updated);
-            void refreshDiary();
+            try {
+              const updated = await api.movie.update(id!, {
+                ...movie,
+                progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.label.trim()).length, totalEpisodes: newSegs.length },
+              });
+              setMovie(updated);
+              void refreshDiary();
+            } catch (err) {
+              // 必须回滚并告知：否则界面显示已保存、云端并没有，
+              // 用户下次打开才发现整期进度丢了（原先这里是 void 掉的未处理拒绝）。
+              setLocalSegs(confirmed);
+              showErrorToast((err as Error).message || '进度保存失败，请重试');
+            }
           })();
         };
         // 新增分段插在所属期的末尾、并继承该期的期号，所以只填「下」「加更上」也不会丢期号。

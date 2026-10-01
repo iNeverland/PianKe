@@ -4,6 +4,7 @@ import PasswordInput from '@/components/common/PasswordInput';
 import { showErrorToast, showToast } from '@/components/common/Toast';
 import defaultAvatar from '@/assets/brand/default-avatar.png';
 import { changeCloudPassword, getCloudUser, logoutCloud, requestPasswordChangeCode, updateCloudProfile } from '@/lib/pocketbase';
+import { clearOfflineCache } from '@/lib/offlineCache';
 import AppIcon from '@/components/common/AppIcon';
 
 function messageOf(error: unknown, fallback: string): string {
@@ -131,10 +132,15 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
   }
 
   function logout() {
-    if (window.confirm('确定要退出当前账号吗？')) {
-      logoutCloud();
-      onClose();
-    }
+    if (!window.confirm('确定要退出当前账号吗？')) return;
+    // 必须先取 ownerId 再清会话：离线缓存是按账号 id 分区的。
+    const ownerId = getCloudUser()?.id;
+    logoutCloud();
+    // 登出即清掉本机的明文离线内容。IndexedDB 里存着影评/短评/追剧感受的完整快照
+    // 以及海报、截图 Blob，不清的话在共用电脑或二手设备上仍可被读出来。
+    // 清理是异步的，失败也不能阻塞登出（最坏情况只是残留，与本次修复前一致）。
+    if (ownerId) void clearOfflineCache(ownerId).catch(() => {});
+    onClose();
   }
 
   return (
@@ -181,7 +187,7 @@ export default function ProfileDialog({ open, onClose, onProfileChange }: Profil
         <section className="profile-panel profile-security-panel">
           <div className="profile-panel-heading"><h3>账号与安全</h3></div>
           <div className="profile-action-row"><div><strong>登录密码</strong><p>定期修改密码能更好地保护你的观影记录。</p></div><button className="btn btn-secondary btn-sm" onClick={() => setPasswordOpen(true)}>修改密码</button></div>
-          <div className="profile-action-row profile-logout-row"><div><strong>退出登录</strong><p>退出后，本机将不再保留此账号的登录状态。</p></div><button className="btn btn-ghost btn-sm text-red" onClick={logout}>退出登录</button></div>
+          <div className="profile-action-row profile-logout-row"><div><strong>退出登录</strong><p>退出后，本机将不再保留此账号的登录状态与离线内容。</p></div><button className="btn btn-ghost btn-sm text-red" onClick={logout}>退出登录</button></div>
         </section>
         </div>
       </div>
