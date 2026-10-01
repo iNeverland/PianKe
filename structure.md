@@ -1,6 +1,8 @@
 # PianKe（片刻）项目结构
 
-> 生成于当前仓库状态（v2.0.9）。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
+> 生成于仓库 v2.0.9 时的状态，版本号已随 v2.1.0 更新；期间新增的 server/cache.mjs、
+> server/devices.mjs、electron/modules/tmdb/credentials.ts、public/theme-boot.js 等文件
+> 尚未反映在本文档中。本文档描述项目目录结构、分层边界与核心数据流，供快速理解代码库使用。
 
 ## 1. 项目概述
 

@@ -62,6 +62,11 @@ jobs:
         run: ${{ matrix.command }} --publish never
         env:
           UPDATE_BASE_URL: ${{ secrets.UPDATE_BASE_URL }}
+          # 打包脚本（scripts/inject-tmdb-proxy.mjs --require）会从这两个变量注入
+          # resources/tmdb-proxy.json，取不到就直接让构建失败 —— 这样才不会打出一个
+          # TMDB 导入不可用、却看起来正常的包。注意它们必须与服务器 .env 的 APP_TOKEN 一致。
+          PIANKE_TMDB_PROXY_URL: ${{ secrets.PIANKE_TMDB_PROXY_URL }}
+          PIANKE_TMDB_PROXY_TOKEN: ${{ secrets.PIANKE_TMDB_PROXY_TOKEN }}
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
