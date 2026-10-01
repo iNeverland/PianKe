@@ -1,50 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// ⚠️ 此块由 generate-preload-channels 插件从 shared/types/index.ts 自动同步
-// 请勿手动修改，如需新增通道请修改 shared/types/index.ts
+// ⚠️ 此块由 vite.config.ts 的 copy-preload 插件从 shared/types/index.ts 自动生成，
+// 请勿手动修改；如需新增通道请改 shared/types/index.ts 的 IPC_CHANNELS。
+// 业务数据（影视/日记/追剧/想看/统计）不走 IPC，因此这里只有原生能力通道。
 const IPC_CHANNELS = {
-  MOVIE_LIST: "movie:list",
-  MOVIE_GET_BY_ID: "movie:getById",
-  MOVIE_CREATE: "movie:create",
-  MOVIE_UPDATE: "movie:update",
-  MOVIE_DELETE: "movie:delete",
-  MOVIE_SEARCH: "movie:search",
-  MOVIE_UPDATE_PROGRESS: "movie:updateProgress",
-  MOVIE_ADD_TAG: "movie:addTag",
-  MOVIE_REMOVE_TAG: "movie:removeTag",
-  MOVIE_GET_ALL_TAGS: "movie:getAllTags",
-  MOVIE_GET_POSTER_URL: "movie:getPosterUrl",
-  MOVIE_EXPORT_EXCEL: "movie:exportExcel",
-  MOVIE_LIST_SCREENSHOTS: "movie:listScreenshots",
-  MOVIE_ADD_SCREENSHOT: "movie:addScreenshot",
-  MOVIE_DELETE_SCREENSHOT: "movie:deleteScreenshot",
-  MOVIE_GET_SCREENSHOT: "movie:getScreenshot",
-  MOVIE_GET_SCREENSHOT_THUMBNAIL: "movie:getScreenshotThumbnail",
-  MOVIE_UPDATE_SCREENSHOT_INFO: "movie:updateScreenshotInfo",
   TMDB_SEARCH: "tmdb:search",
   TMDB_GET_DETAILS: "tmdb:getDetails",
   TMDB_GET_POSTER: "tmdb:getPoster",
-  DIARY_DELETE: "diary:delete",
-  DIARY_GET_BY_MOVIE: "diary:getByMovie",
-  DIARY_GET_TIMELINE: "diary:getTimeline",
-  WATCH_RECORD_GET_BY_MOVIE: "watchRecord:getByMovie",
-  WATCH_RECORD_ADD: "watchRecord:add",
-  WATCH_RECORD_UPDATE: "watchRecord:update",
-  WATCH_RECORD_DELETE: "watchRecord:delete",
-  WATCHLIST_LIST: "watchlist:list",
-  WATCHLIST_MARK_AS_WATCHED: "watchlist:markAsWatched",
-  WATCHLIST_MARK_AS_WATCHING: "watchlist:markAsWatching",
-  STATS_DASHBOARD: "stats:dashboard",
-  STATS_OVERVIEW: "stats:overview",
-  STATS_BY_MEDIA_TYPE: "stats:byMediaType",
-  STATS_BY_YEAR: "stats:byYear",
-  STATS_BY_GENRE: "stats:byGenre",
-  STATS_BY_RATING: "stats:byRating",
-  STATS_BY_COUNTRY: "stats:byCountry",
-  STATS_DIARY_RATING_DIST: "stats:diaryRatingDist",
-  STATS_MONTHLY_TREND: "stats:monthlyTrend",
-  STATS_MONTH_SUMMARY: "stats:monthSummary",
-  STATS_DIARY_CALENDAR: "stats:diaryCalendar",
   UPDATE_GET_STATE: "update:getState",
   UPDATE_CHECK: "update:check",
   UPDATE_DOWNLOAD: "update:download",
@@ -88,8 +50,8 @@ const electronAPI = {
   unregisterShortcut: () => ipcRenderer.invoke('shortcut:unregister'),
   showScreenToast: (message, duration) => ipcRenderer.invoke('screen-toast:show', message, duration),
 
-  // 获取桌面捕获源（用于屏幕截图）
-  getDesktopSources: () => ipcRenderer.invoke('desktop-capturer:getSources'),
+  // 主屏快照（截图的输入源）。原先还暴露过一个 getDesktopSources（枚举屏幕与窗口），
+  // 全项目无人调用，已移除以免平白多一个可枚举屏幕的入口。
   getPrimaryScreenSnapshot: () => ipcRenderer.invoke('desktop-capturer:getPrimaryScreenSnapshot'),
 
   // 启动桌面裁剪窗口（从非详情页发起时同步当前数据源的影片列表）

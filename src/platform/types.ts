@@ -59,7 +59,6 @@ export interface Platform {
   registerShortcut(accelerator: string): Promise<boolean>;
   unregisterShortcut(): Promise<void>;
   showScreenToast(message: string, duration?: number): Promise<void>;
-  getDesktopSources(): Promise<{ id: string; name: string; thumb: string }[]>;
   getPrimaryScreenSnapshot(): Promise<string | null>;
   startCrop(
     movieId: string | null,

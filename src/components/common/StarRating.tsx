@@ -5,29 +5,14 @@ interface StarRatingProps {
   readOnly?: boolean;
 }
 
-// 点击评分时的弹跳动画 keyframes (injected via style tag once)
-let styleInjected = false;
-function injectBounceKeyframes() {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = `
-    @keyframes star-pop {
-      0% { transform: scale(1); }
-      40% { transform: scale(1.35); }
-      100% { transform: scale(1); }
-    }
-  `;
-  document.head.appendChild(style);
-}
-
 export default function StarRating({ value, onChange, size = 20, readOnly = false }: StarRatingProps) {
   // 5 颗星，分别对应 2/4/6/8/10 分
   const stars = [2, 4, 6, 8, 10];
   // 可交互时命中区扩到 ≥44×44（HIG 触控热区），图标本身仍是 size；只读展示保持紧凑
   const hit = readOnly ? size : Math.max(44, size);
 
-  injectBounceKeyframes();
+  // star-pop 关键帧定义在 index.css（原先在 render 期间往 head 注入 <style>，
+  // 属于渲染期副作用，且会让 CSP 的 style-src 收不紧）。
 
   return (
     <div

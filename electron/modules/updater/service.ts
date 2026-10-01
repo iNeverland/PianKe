@@ -1,7 +1,6 @@
 import { app, BrowserWindow } from 'electron';
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from 'electron-updater';
 import type { AppUpdateState, UpdateCheckSource } from '../../../shared/types/index.js';
-import { writeQueue } from '../../utils/writeQueue.js';
 
 export const UPDATE_STATE_EVENT = 'update:stateChanged';
 
@@ -93,8 +92,8 @@ async function restartAndInstall(): Promise<void> {
   if (installRequested) return;
   installRequested = true;
 
-  // 等待已经提交的日记、进度等文件写入完成，再关闭安装。
-  await writeQueue.drain();
+  // 这里曾用 writeQueue.drain() 等待本机资源库的文件写入收尾。本地资源库已经移除
+  // （业务数据只在 PocketBase），主进程不再写任何数据文件，因此不再需要等待。
   // Squirrel.Mac 会在旧进程完全退出前启动新版本。提前释放单实例锁，
   // 防止新版本因无法取得锁而立即退出。
   if (process.platform === 'darwin') {

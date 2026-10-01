@@ -123,11 +123,19 @@ export default function App() {
   useEffect(() => {
     if (!libraryLoaded) return;
 
+    /** 应用是否停留在首页（只有首页有搜索框）。HashRouter 下首页是 #/ 。 */
+    const isHomeRoute = () => {
+      const hash = window.location.hash;
+      return hash === '' || hash === '#' || hash === '#/' || hash.startsWith('#/?');
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
 
-      // Ctrl+K 或 Ctrl+F：聚焦首页搜索框
+      // Ctrl+K 或 Ctrl+F：聚焦首页搜索框。只在首页拦截：搜索框只存在于首页，
+      // 其他页面拦下来既没有反应，又白白吞掉了浏览器自带的查找快捷键。
       if (mod && (e.key === 'k' || e.key === 'K' || e.key === 'f' || e.key === 'F')) {
+        if (!isHomeRoute()) return;
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('focus-home-search'));
         return;

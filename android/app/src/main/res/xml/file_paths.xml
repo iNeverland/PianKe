@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 暴露的路径。
+  原先用 <external-path path="." />，等于把整个外部存储（/sdcard/）交给任何拿到本应用
+  content:// URI 的接收方；改成应用专属目录（/sdcard/Android/data/<包名>/files/），
+  Capacitor 插件写入的位置本来就在那里，能力不减、暴露面收窄。
+-->
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
+    <external-files-path name="my_images" path="." />
     <cache-path name="my_cache_images" path="." />
 </paths>

@@ -15,7 +15,6 @@ type NativeApi = Pick<Platform, 'platform' | 'setTheme' | 'window' | 'updater' |
     | 'registerShortcut'
     | 'unregisterShortcut'
     | 'showScreenToast'
-    | 'getDesktopSources'
     | 'getPrimaryScreenSnapshot'
     | 'startCrop'
     | 'onScreenshotCropped'

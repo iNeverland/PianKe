@@ -12,14 +12,23 @@ function getSyncedPreloadContent(): string {
   const typesContent = fs.readFileSync(typesPath, 'utf-8');
   const preloadContent = fs.readFileSync(preloadPath, 'utf-8');
   const match = typesContent.match(/export const IPC_CHANNELS\s*=\s*(\{[\s\S]*?\})\s*as\s*const;/);
-  if (!match) return preloadContent;
+  if (!match) {
+    // 这里曾经是 `return preloadContent`：一旦 shared/types 里这个常量的写法变了，
+    // 构建出的 preload 会安静地保留一份与真源脱节的旧通道表，没有任何提示。
+    // 现在改为让构建直接失败。
+    throw new Error('[preload] 无法从 shared/types/index.ts 解析 IPC_CHANNELS，请检查该常量的声明写法');
+  }
 
   const channelsBlock = `// This block is generated from shared/types/index.ts during build.\n// Edit IPC_CHANNELS in shared/types/index.ts, not this generated copy.\nconst IPC_CHANNELS = ${match[1]};`;
 
-  return preloadContent.replace(
+  const nextContent = preloadContent.replace(
     /const IPC_CHANNELS\s*=\s*\{[\s\S]*?\n\};/,
     channelsBlock
   );
+  if (nextContent === preloadContent) {
+    throw new Error('[preload] 未能在 electron/preload/main.cjs 中定位 IPC_CHANNELS 代码块');
+  }
+  return nextContent;
 }
 
 function copyPreloadPlugin(): Plugin {

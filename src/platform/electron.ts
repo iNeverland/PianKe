@@ -40,7 +40,6 @@ export const electronPlatform: Platform = {
   registerShortcut: (accelerator) => window.electronAPI.registerShortcut(accelerator),
   unregisterShortcut: () => window.electronAPI.unregisterShortcut(),
   showScreenToast: (message, duration) => window.electronAPI.showScreenToast(message, duration),
-  getDesktopSources: () => window.electronAPI.getDesktopSources(),
   getPrimaryScreenSnapshot: () => window.electronAPI.getPrimaryScreenSnapshot(),
   startCrop: (movieId, fullScreenDataUrl, movies) =>
     window.electronAPI.startCrop(movieId, fullScreenDataUrl, movies),

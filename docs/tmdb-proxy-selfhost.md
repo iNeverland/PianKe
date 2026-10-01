@@ -4,11 +4,14 @@
 
 ## 现状
 
+> 本文会随仓库一起分发。**不要在这里写具体的公网 IP、SSH 端口与登录用户**——
+> 那等于把攻击目标连同端口一起公开（本仓库会发布 GitHub Release，请按公开仓库对待）。
+> 下表只保留运维需要、且不构成攻击入口的信息；主机地址请从你自己的密码管理器取。
+
 | 项目 | 值 |
 | --- | --- |
-| 服务器 | Ubuntu 24.04（SG 新加坡，1 vCPU / 2 GB / 25 GB） |
-| 公网 IP | `104.207.92.221` |
-| SSH | `root@104.207.92.221:22022`（仅密钥登录） |
+| 服务器 | Ubuntu 24.04（新加坡，1 vCPU / 2 GB / 25 GB） |
+| 主机与端口 | `root@<主机>:<SSH 端口>`（仅密钥登录，密码登录已关闭） |
 | 代理域名 | `https://tmdb.astara.space` |
 | 服务端代码 | `/opt/pianke/server/index.mjs`（零依赖 Node） |
 | 上游监听 | `127.0.0.1:8787`（**不对公网暴露**） |
@@ -70,8 +73,8 @@ curl -s https://tmdb.astara.space/healthz
 
 ```powershell
 # 在开发机上
-scp -P 22022 server\index.mjs root@104.207.92.221:/opt/pianke/server/
-ssh -p 22022 root@104.207.92.221 "systemctl restart pianke-tmdb && sleep 1 && curl -s http://127.0.0.1:8787/api/healthz"
+scp -P <SSH 端口> server\index.mjs root@<主机>:/opt/pianke/server/
+ssh -p <SSH 端口> root@<主机> "systemctl restart pianke-tmdb && sleep 1 && curl -s http://127.0.0.1:8787/api/healthz"
 ```
 
 ## 客户端侧契约
@@ -229,7 +232,7 @@ node /opt/pianke/server/device-admin.mjs prune --days 90 --yes
 
 | 报错 | 含义 | 排查 |
 | --- | --- | --- |
-| `无法连接 TMDB 代理服务器` | 客户端 `fetch` 完全失败（DNS/连接层） | 域名是否解析到 `104.207.92.221`；`curl -s https://tmdb.astara.space/healthz` |
+| `无法连接 TMDB 代理服务器` | 客户端 `fetch` 完全失败（DNS/连接层） | 域名是否解析到 `<服务器 IP>`；`curl -s https://tmdb.astara.space/healthz` |
 | `未授权访问`（401） | 既没有有效的共享口令，也没有有效的设备凭据 | 先跑 `npm run tmdb:proxy:check` 取客户端口令指纹，与服务端启动日志里的指纹比对；三处分别是反代 `__APP_TOKEN_REGEX__`、`.env` 的 `APP_TOKEN`/`APP_TOKEN_PREVIOUS`、打包注入的 `PIANKE_TMDB_PROXY_TOKEN`。若客户端已用设备凭据，则用 `device-admin.mjs list` 确认设备是否被吊销 |
 | `共享口令已停用数据访问，请把客户端升级到使用设备凭据的版本`（401） | 服务端已设 `LEGACY_TOKEN_DATA_ACCESS=false`，而这个客户端还没升级 | 分发带设备凭据的新客户端；紧急情况可临时把它改回 `true` 并重启 |
 | 设备注册 `429`（注册过于频繁/已达当日配额） | 命中 `REGISTER_LIMIT_PER_HOUR` / `REGISTER_LIMIT_PER_DAY` | 正常现象；若确实是自己的装机潮，临时调大配额后重启 |
@@ -267,8 +270,8 @@ node /opt/pianke/server/device-admin.mjs prune --days 90 --yes
 - **服务端 `TMDB_TOKEN` 尚未轮换**：`server/.env` 中的 v4 Token 为明文落盘（该文件未被 git 跟踪）。
   它同样需要轮换，但目前无法重新申请，属于已知残留风险；缓解措施是保持 `.env` 权限 `600`、
   不进入备份/同步盘，并在将来可以申请时立即更换。模板见 `server/.env.example`。
-- **轮换服务器登录凭据**：部署期间 root 密码曾在聊天记录中出现。SSH 密码登录已关闭
-  （`PasswordAuthentication no` + `PermitRootLogin prohibit-password`），建议再执行一次
-  `passwd root` 换强密码。
+- **轮换服务器登录凭据**：部署期间曾有一个 SSH 登录口令出现在聊天记录里（具体值不再复述）。
+  密码登录已关闭（`PasswordAuthentication no` + `PermitRootLogin prohibit-password`），
+  建议仍执行一次 `passwd root` 换强密码，并确认 `authorized_keys` 里没有多余的旧公钥。
 - **确认 Vercel 项目已删除**：旧的 `pianke-tmdb-proxy.vercel.app` 曾有可用部署，
   `server/vercel/` 源码已在本次迁移中移除，Vercel 控制台上的项目需手动删除。

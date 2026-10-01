@@ -58,19 +58,6 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
     showScreenToast(message, duration);
   });
 
-  ipcMain.handle('desktop-capturer:getSources', async (event) => {
-    assertTrustedSender(event);
-    const sources = await desktopCapturer.getSources({
-      types: ['screen', 'window'],
-      thumbnailSize: { width: 320, height: 180 },
-    });
-    return sources.map((s) => ({
-      id: s.id,
-      name: s.name,
-      thumb: s.thumbnail.toDataURL(),
-    }));
-  });
-
   ipcMain.handle('desktop-capturer:getPrimaryScreenSnapshot', async (event) => {
     assertTrustedSender(event);
     const primaryDisplay = screen.getPrimaryDisplay();
@@ -165,8 +152,12 @@ export function registerScreenshotHandlers(baseDir: string, getMainWindow: MainW
 
   ipcMain.handle('screenshot:movie-picker-cancel', (event) => {
     assertTrustedSender(event, getMoviePickerWebContents());
+    // 走到这里说明用户已经裁剪好了图，只是没选影片。直接丢掉会是静默的数据丢失，
+    // 给一句明确的反馈，免得用户以为截图还在。
+    const discarded = Boolean(pendingCroppedDataUrl);
     pendingCroppedDataUrl = null;
     closeMoviePickerWindow();
+    if (discarded) showScreenToast('未选择影片，本次截图已放弃');
   });
 }
 

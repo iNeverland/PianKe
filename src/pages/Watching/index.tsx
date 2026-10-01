@@ -19,7 +19,8 @@ export default function Watching() {
   const [jumpMovie, setJumpMovie] = useState<MovieSummary | null>(null);
   const [jumpEpisode, setJumpEpisode] = useState(1);
   const [finishingMovie, setFinishingMovie] = useState<MovieSummary | null>(null);
-  const [updatingMovieId, setUpdatingMovieId] = useState<string | null>(null);
+  // 用集合而不是单个 id：同时更新两部影片时，先完成的那部不应该把另一部的按钮解禁
+  const [updatingMovieIds, setUpdatingMovieIds] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     loadMovies();
@@ -46,7 +47,7 @@ export default function Watching() {
         : item
     )));
     try {
-      setUpdatingMovieId(movie.id);
+      setUpdatingMovieIds((prev) => new Set(prev).add(movie.id));
       const updated = await api.movie.updateProgress(movie.id, episode);
       setMovies((prev) => prev.map((m) => (m.id === movie.id ? { ...m, progress: updated.progress } : m)));
       showToast(`「${movie.title}」进度 第${episode}集`);
@@ -56,7 +57,11 @@ export default function Watching() {
       )));
       showErrorToast(err.message || '操作失败');
     } finally {
-      setUpdatingMovieId(null);
+      setUpdatingMovieIds((prev) => {
+        const next = new Set(prev);
+        next.delete(movie.id);
+        return next;
+      });
     }
   }
 
@@ -170,7 +175,7 @@ export default function Watching() {
                     onClick={() => handleQuickProgress(movie)}
                     className="quick-action-btn"
                     title="下一集"
-                    disabled={updatingMovieId === movie.id}
+                    disabled={updatingMovieIds.has(movie.id)}
                   >
                     +1集
                   </button>
@@ -178,7 +183,7 @@ export default function Watching() {
                     onClick={() => openJumpModal(movie)}
                     className="quick-action-btn"
                     title="跳转到指定集数"
-                    disabled={updatingMovieId === movie.id}
+                    disabled={updatingMovieIds.has(movie.id)}
                   >
                     跳集
                   </button>
@@ -186,7 +191,7 @@ export default function Watching() {
                     onClick={() => setFinishingMovie(movie)}
                     className="quick-action-btn primary"
                     title="标记已看完"
-                    disabled={updatingMovieId === movie.id}
+                    disabled={updatingMovieIds.has(movie.id)}
                   >
                     看完
                   </button>

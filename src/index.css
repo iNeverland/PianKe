@@ -48,8 +48,13 @@
   --border-control: #8F8878;
   /* 以下三档由主色派生：换 --accent 时自动跟随，不再散落写死 rgba(239,120,0,…)。
      transparent 终止色与 rgba 的视觉结果一致（均为同色同 alpha 的叠加）。 */
+  /* 每档写两条：前一条是给不支持 color-mix 的旧 WebView（Chromium < 111）的静态回退，
+     后一条在现代内核上生效（无法解析的声明会在解析期被丢弃，所以前一条仍有效）。 */
+  --accent-dim:    rgba(239, 120, 0, 0.08);
   --accent-dim:    color-mix(in srgb, var(--accent) 8%, transparent);
+  --accent-glow:   rgba(239, 120, 0, 0.15);
   --accent-glow:   color-mix(in srgb, var(--accent) 15%, transparent);
+  --accent-glow-strong: rgba(239, 120, 0, 0.25);
   --accent-glow-strong: color-mix(in srgb, var(--accent) 25%, transparent);
   --red:            #B42318;
   --red-solid:      #C0392B;
@@ -131,8 +136,11 @@
   /* 控件/弹窗边界（深色）：收敛的暗发丝线；输入类用 --border-control 保 3:1 */
   --border-strong: #4F4F46;
   --border-control: #6E6E62;
+  --accent-dim:    rgba(239, 120, 0, 0.10);
   --accent-dim:    color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-glow:   rgba(239, 120, 0, 0.18);
   --accent-glow:   color-mix(in srgb, var(--accent) 18%, transparent);
+  --accent-glow-strong: rgba(239, 120, 0, 0.30);
   --accent-glow-strong: color-mix(in srgb, var(--accent) 30%, transparent);
   --red:            #FF7A6B;
   --red-solid:      #B3352B;
@@ -194,8 +202,11 @@
     /* 控件/弹窗边界（深色）：收敛的暗发丝线；输入类用 --border-control 保 3:1 */
   --border-strong: #4F4F46;
   --border-control: #6E6E62;
+    --accent-dim:    rgba(239, 120, 0, 0.10);
     --accent-dim:    color-mix(in srgb, var(--accent) 10%, transparent);
+    --accent-glow:   rgba(239, 120, 0, 0.18);
     --accent-glow:   color-mix(in srgb, var(--accent) 18%, transparent);
+    --accent-glow-strong: rgba(239, 120, 0, 0.30);
     --accent-glow-strong: color-mix(in srgb, var(--accent) 30%, transparent);
     --red:            #FF7A6B;
     --red-solid:      #B3352B;
@@ -2370,6 +2381,15 @@ select.form-input {
 }
 
 /* ═══ 评分星级预览 ═══ */
+
+/* 点击评分时的弹跳动画。原由 StarRating 在渲染期往 head 注入 <style>，
+   属于渲染期副作用，现统一放在这里（组件只负责设置 animation 名）。 */
+@keyframes star-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
 .rating-input-wrap {
   display: flex; align-items: center; gap: 10px;
 }

@@ -16,6 +16,15 @@ import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
 import FinishWatchingModal, { type FinishWatchingData } from '@/components/movie/FinishWatchingModal';
 import AppIcon from '@/components/common/AppIcon';
 
+/**
+ * 追剧记录按「观看时间倒序」排列，与云端返回的顺序保持一致。
+ * 撤销删除与失败回滚都是把记录塞回列表，必须重新排序，
+ * 否则那条记录会跑到列表末尾，和它自己的日期对不上。
+ */
+function sortByWatchMomentDesc(list: WatchRecord[]): WatchRecord[] {
+  return [...list].sort((a, b) => `${b.watchDate}${b.watchTime || ''}`.localeCompare(`${a.watchDate}${a.watchTime || ''}`));
+}
+
 export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -301,13 +310,13 @@ export default function MovieDetail() {
               rating: entryToDelete.rating,
               review: entryToDelete.review || '',
             });
-            setEntries((prev) => [...prev, restored]);
+            setEntries((prev) => sortByWatchMomentDesc([...prev, restored]));
           }
         } catch { showErrorToast('撤销失败'); }
       });
     } catch (err: any) {
       // 回滚
-      if (entryToDelete) setEntries((prev) => [...prev, entryToDelete]);
+      if (entryToDelete) setEntries((prev) => sortByWatchMomentDesc([...prev, entryToDelete]));
       showErrorToast(err.message || '删除失败');
     }
   }

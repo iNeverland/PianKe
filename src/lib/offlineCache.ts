@@ -71,13 +71,8 @@ export function saveOfflineSnapshot<T>(ownerId: string, value: T): Promise<void>
   return putValue(SNAPSHOT_STORE, ownerId, 'snapshot', value);
 }
 
-export function getOfflineRecord<T>(ownerId: string, name: string): Promise<T | null> {
-  return getValue<T>(RECORD_STORE, ownerId, name);
-}
-
-export function saveOfflineRecord<T>(ownerId: string, name: string, value: T): Promise<void> {
-  return putValue(RECORD_STORE, ownerId, name, value);
-}
+// 注意：records 桶目前没有任何读写方（早期的按名记录缓存已被整份快照取代）。
+// 桶本身保留，是为了让老装机留下的数据仍能被 clearOfflineCache 清干净。
 
 export function getOfflineMedia(ownerId: string, name: string): Promise<Blob | null> {
   return getValue<Blob>(MEDIA_STORE, ownerId, name);

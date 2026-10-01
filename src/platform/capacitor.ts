@@ -54,7 +54,6 @@ export const capacitorPlatform: Platform = {
   registerShortcut: async () => false,
   unregisterShortcut: async () => {},
   showScreenToast: async (_message: string, _duration?: number) => {},
-  getDesktopSources: async () => [],
   getPrimaryScreenSnapshot: async () => null,
   startCrop: async () => {},
   onScreenshotCropped: () => () => {},
