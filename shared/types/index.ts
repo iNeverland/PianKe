@@ -102,6 +102,29 @@ export interface StatsOverview {
   /** 平均个人评分：无任何评分时返回 null，UI 显示为「—」而非「0/10」。 */
   avgPersonalRating: number | null;
   mostWatchedGenre: string[];
+  /**
+   * 以下字段供统计页顶部概览卡（方案 D：数值 + 变化量 + 上下文）使用。
+   * 全部由 `buildDashboard` 在前端就地聚合，不额外请求云端。
+   */
+  /** 各状态的影视数量，用于「影视总数」卡的上下文。 */
+  statusCounts: Record<WatchStatus, number>;
+  /** 本月新增影视数、上月新增数（用于「本月 +2」这类变化量）。 */
+  addedThisMonth: number;
+  addedLastMonth: number;
+  /** 本月 / 上月观影时长（小时），口径与 totalHours 一致。 */
+  hoursThisMonth: number;
+  hoursLastMonth: number;
+  /** 参与平均分计算的评分条数与其中出现最多的分值（1–10），无评分时为 null。 */
+  ratedCount: number;
+  topRating: number | null;
+  /**
+   * 类型分布第一名及**包含该类型的影片数**。
+   * 「最爱类型」卡的占比口径是 `topGenreCount / totalMovies`：即这个类型出现在
+   * 全部影片中的比例。不要改成"除以所有类型标签数"——那是标签占比，一部片带多个
+   * 类型会把占比摊薄，与"这个类型占我片库多少"不是同一个问题。
+   */
+  topGenre: string | null;
+  topGenreCount: number;
 }
 
 // 按类型统计
@@ -139,6 +162,8 @@ export interface StatsByRating {
 export interface StatsMonthlyTrend {
   month: string;
   count: number;
+  /** 该月观影小时数（口径与 totalHours 一致：只计「已看完」，剧集/综艺按 片长 × 总集数）。 */
+  hours: number;
 }
 
 export interface StatsDashboard {
@@ -201,6 +226,10 @@ export interface TmdbDetails {
 // 代理服务返回的海报数据 URL（由主进程下载后生成）
 export interface TmdbPosterResult {
   dataUrl: string | null;
+  /** 实际取到的规格（w500/w342/w154）：主进程会从大图逐级降级，取到即止。 */
+  width?: string;
+  /** 实际字节数，便于排查「海报为什么很小」或「为什么走了降级」。 */
+  bytes?: number;
 }
 
 // 月度总结

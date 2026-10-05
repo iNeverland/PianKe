@@ -195,6 +195,12 @@ export interface SegmentGroup {
   title: string;
   sortKey: number;
   items: ParsedSegment[];
+  /**
+   * 组内分段在 `segments` 数组里的最大下标，即这一期**最新一条**记录的位置。
+   * 展示层用它判断「哪一期是最近添加的」——期号可以是任意文本（先导片、特别篇…），
+   * 数值排序（sortKey）推不出先后，只有数组下标才如实反映添加顺序。
+   */
+  maxIndex: number;
 }
 
 export interface SegmentGroupOptions {
@@ -206,7 +212,9 @@ export interface SegmentGroupOptions {
  * 把结构化分段整理成「按期分组」的展示结构。
  *
  * 期号直接来自数据；只有期号为空的分段才按索引距离就近归入相邻期（展示层兜底，
- * 不写回数据）。分组按出现顺序输出，组内按上/中/下/加更排序。
+ * 不写回数据）。分组按**数据里的出现顺序**（= 添加顺序，最早在前）输出，组内按
+ * 上/中/下/加更排序；需要「最新添加的在最上面」的展示顺序时由调用方反转
+ * （见详情页，并配合 `maxIndex` 判断哪一期最新）。
  */
 export function groupSegments(segments: readonly ProgressSegment[], options: SegmentGroupOptions = {}): SegmentGroup[] {
   const { groupBySeason = true } = options;
@@ -252,12 +260,13 @@ export function groupSegments(segments: readonly ProgressSegment[], options: Seg
   for (const item of parsed) {
     let group = byTitle.get(item.title);
     if (!group) {
-      group = { id: item.title, title: item.title, sortKey: item.sortKey, items: [] };
+      group = { id: item.title, title: item.title, sortKey: item.sortKey, items: [], maxIndex: -1 };
       byTitle.set(item.title, group);
       groups.push(group);
     }
     // 同组内排序键取最小（空分段解析不出期号，不能带偏整组的顺序）
     if (item.sortKey < group.sortKey) group.sortKey = item.sortKey;
+    if (item.index > group.maxIndex) group.maxIndex = item.index;
     group.items.push(item);
   }
 
@@ -282,11 +291,17 @@ export function countWatched(group: SegmentGroup): number {
  * 整期改名：把 `from` 这一期的所有分段改到 `to`，分段名保持不变。
  *
  * 用于「直接编辑组标题」——改一处，整期跟随，不必逐行改名。
- * `to` 只写数字（「5」）时补成标准写法「第 5 期」，与旧版只让数字可编辑的手感一致。
+ *
+ * `to` **原样保存**，不做任何补全或改写：用户写「5」就是「5」，不会被换成「第 5 期」；
+ * 写「第五期」「先导片（上）」「SP1」也照原样留着。期号本来就是用户自己的记录习惯，
+ * 程序只负责存下来，不替用户决定写法（下一期的默认值另见 `nextPeriodSegment`）。
+ *
+ * `target` 为空（用户把标题删干净）时视为未修改，保持原期号——空期号在数据模型里是
+ * 「未归期」，会让整期掉进兜底分组「其他」，不是用户想要的结果。
  */
 export function renamePeriod(segments: readonly ProgressSegment[], from: string, to: string): ProgressSegment[] {
   const source = from.trim();
-  const target = normalizePeriodText(to);
+  const target = to.trim();
   if (!source || !target || source === target) return [...segments];
   // 「其他」组是无期号分段的兜底分组：给它改名即等于把这些分段正式归入新期号。
   const matches = (segment: ProgressSegment) => (
@@ -295,22 +310,12 @@ export function renamePeriod(segments: readonly ProgressSegment[], from: string,
   return segments.map((segment) => (matches(segment) ? { ...segment, period: target } : segment));
 }
 
-/** 期号文本归一化：「5」→「第 5 期」；其他文本（先导片、番外…）原样保留。 */
-function normalizePeriodText(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return '';
-  const numeric = /^[0-9０-９]+$/.test(trimmed) || /^[一二三四五六七八九十]+$/.test(trimmed);
-  if (numeric) {
-    const value = cnNumberToInt(trimmed);
-    if (value != null && value > 0) return periodText(value);
-  }
-  return trimmed;
-}
-
 /**
  * 生成“下一期”的默认分段：现有最大期号 +1，没有期号时从第 1 期开始。
  *
  * 分段名带 `上`，新一期一添加就能直接落进对应分组，不需要用户先写期号。
+ * 这里生成的「第 N 期」只是**新建时的默认值**：期号本身是自由文本，自定义写法
+ * （特别篇、SP…）不参与 +1，用户改标题即可，不会被程序改写（见 `renamePeriod`）。
  *
  * 已知语义代价：本模型里「已看」等价于「分段名非空」，所以新添加的一期会先显示为
  * **已看**。要根治需要把分段改为 `{ label, watched }` 并做数据迁移。

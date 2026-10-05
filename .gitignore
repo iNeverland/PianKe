@@ -41,6 +41,9 @@ screenshot-*.png
 screenshot-*.jpg
 screenshot-*.webp
 
+# 设计预览稿（本机比对用，不是产品资源）
+design-preview/
+
 # Android build caches (redirected into workspace for sandboxed builds)
 .gradle-home/
 .android-sdk/

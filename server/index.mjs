@@ -368,7 +368,9 @@ const server = http.createServer(async (req, res) => {
       if (cached && cached.buffer) {
         return sendImage(res, cached.buffer, cached.type);
       }
-      const imgRes = await fetch(`${TMDB_IMG}/${width}${imgPath}`, { signal: AbortSignal.timeout(15000) });
+      // 回源超时留出余量：服务器到 image.tmdb.org 偶发慢速，
+      // 15 秒会在高峰期把本可成功的海报判成失败；客户端侧的超时更长（见 electron/modules/tmdb/service.ts）。
+      const imgRes = await fetch(`${TMDB_IMG}/${width}${imgPath}`, { signal: AbortSignal.timeout(30000) });
       if (!imgRes.ok) return sendJson(res, 502, { error: '海报获取失败' });
       const contentLength = Number(imgRes.headers.get('content-length') || 0);
       if (contentLength > MAX_IMAGE_BYTES) return sendJson(res, 413, { error: '海报文件过大' });

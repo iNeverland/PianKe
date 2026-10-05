@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import { platform } from '@/platform';
-import { getSegmentInputWidth } from '@/lib/segmentInput';
-import { countWatched, groupSegments, nextPeriodSegment, parseSegmentText, renamePeriod } from '@/lib/segmentGroups';
+import { getPeriodInputWidth, getSegmentInputWidth } from '@/lib/segmentInput';
+import { countWatched, groupSegments, nextPeriodSegment, parseSegmentText, renamePeriod, type SegmentGroup } from '@/lib/segmentGroups';
 import type { MovieMetadata, DiaryEntry, ProgressSegment, WatchRecord, ScreenshotInfo } from '@shared/types/index';
 import { getLocalDateStr, getLocalTimeStr } from '@shared/utils/date';
 import StarRating from '@/components/common/StarRating';
@@ -944,7 +944,10 @@ export default function MovieDetail() {
           setLocalSegs(next);
         };
         /**
-         * “添加一期”：直接生成下一期（按现有最大期号 +1），并立刻成组。
+         * “添加一期”：默认生成下一期（按现有最大数字期号 +1），并立刻成组。
+         *
+         * 期号本身是自由文本，「第 N 期」只是新建时的默认值：用户若写了「特别篇」这类
+         * 自定义期号，它不参与 +1（无法推算），改标题即可，不会被程序改写。
          *
          * 新一期默认带 `上` 分段名。注意本模型里「已看」等价于「分段名非空」，因此新一期
          * 初始显示为已看——这是已知代价，想要“已排期但未看”需要再引入 watched 字段。
@@ -952,17 +955,27 @@ export default function MovieDetail() {
         const appendNextPeriod = () => {
           const segment = nextPeriodSegment(segs);
           setLocalSegs([...segs, segment]);
-          showToast(`已添加「${segment.period}${segment.label}」，可点击方块改名`);
+          showToast(`已添加「${segment.period}${segment.label}」，标题与方块都可点击改名`);
         };
 
-        // 折叠时只保留“期号最大”的那一期（按期号比较，而非列表位置）。
-        const maxPeriod = groups.reduce((max, group) => (
-          group.sortKey !== Number.MAX_SAFE_INTEGER && group.sortKey > max ? group.sortKey : max
-        ), Number.NEGATIVE_INFINITY);
+        /**
+         * 展示顺序：最新添加的一期在最上面。
+         *
+         * 不能按期号数值排：期号现在是自由文本（先导片、特别篇、SP1…），数值推不出先后，
+         * 而 `groupSegments` 是按「最早在前」的数据顺序输出的。所以这里反转数组
+         * （reverse 不改原数组），让「刚加的那一期」始终出现在卡片顶部。
+         */
+        const displayGroups = [...groups].reverse();
+        // 折叠时只留「最新添加的那一期」：取 maxIndex（组内最后一条记录的下标）最大的组，
+        // 它也是 displayGroups 的第一项——所以无论新期号是第 N 期还是纯文字，折叠后都在最上面。
+        const latestGroup = groups.reduce<SegmentGroup | null>(
+          (latest, group) => (latest === null || group.maxIndex > latest.maxIndex ? group : latest),
+          null,
+        );
         const collapsible = groups.length > 1;
         const visibleGroups = (collapsible && !segmentExpanded)
-          ? groups.filter(group => group.sortKey === maxPeriod)
-          : groups;
+          ? (latestGroup ? [latestGroup] : [])
+          : displayGroups;
 
         return (
           <div className="stat-card-contained mt-9">
@@ -989,27 +1002,28 @@ export default function MovieDetail() {
               {visibleGroups.map(group => (
                 <div className="segment-group" key={group.id}>
                   <div className="segment-group-head">
-                    {/* 期号即组标题，可直接编辑：改一处，整期跟随（见 lib/segmentGroups.renamePeriod）。
-                        非数字期号（先导片、番外…）同样可改，因此不再假设「第 N 期」这一种写法。 */}
+                    {/* 期号即组标题，完全自由文本、可直接编辑：改一处，整期跟随（见 lib/segmentGroups.renamePeriod）。
+                        程序只做 trim，不把「5」补成「第 5 期」，所以「先导片」「第五期」「SP1」等写法都按原样存下来。 */}
                     <span className="segment-group-name segment-period-edit">
                       <input
                         type="text"
                         className="segment-period-input"
+                        title="点击可修改本期期号（整期一起改）"
+                        aria-label={`期号「${group.title}」，可直接修改（整期一起改）`}
                         value={editingPeriod?.id === group.id ? editingPeriod.draft : group.title}
-                        /* 宽度随文字长度增长（中日韩字符按 1em、其余按 0.6em 估算），避免期号被截断 */
-                        style={{ width: `${Math.max(2.2, [...(editingPeriod?.id === group.id ? editingPeriod.draft : group.title)].reduce((sum, ch) => sum + (/[\u4e00-\u9fff]/.test(ch) ? 1 : 0.6), 0))}em` }}
+                        /* 宽度按真实字体测量后增长，自定义期号（先导片、特别篇、SP1…）不会被截断 */
+                        style={{ width: getPeriodInputWidth(editingPeriod?.id === group.id ? editingPeriod.draft : group.title) }}
                         onFocus={() => setEditingPeriod({ id: group.id, draft: group.title })}
                         onChange={(e) => setEditingPeriod({ id: group.id, draft: e.target.value })}
                         onBlur={() => {
                           const draft = editingPeriod?.draft ?? '';
                           setEditingPeriod(null);
                           const next = renamePeriod(segs, group.title, draft);
-                          // 标题没变（含只改了空格/大小写形式）就不写回，避免无意义请求
+                          // 标题没变（含只改了首尾空格、或清空后按未修改处理）就不写回，避免无意义请求
                           if (next.every((segment, i) => segment.period === segs[i].period)) return;
                           commitSegs(next);
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') { setEditingPeriod(null); e.currentTarget.blur(); } }}
-                        aria-label={`期号「${group.title}」，可直接修改（整期一起改）`}
                       />
                     </span>
                     <span className="segment-group-line" />

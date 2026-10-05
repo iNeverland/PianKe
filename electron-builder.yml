@@ -10,6 +10,10 @@ files:
   - "!dist/*.blockmap"
   - "!dist/*.yml"
   - dist-electron/**/*
+  # 主进程产物已改名 main.cjs（Electron 34 内嵌的 Node 20.19.1 加载不了 ESM 入口，
+  # 详见 vite.config.ts 的说明）。旧构建残留的 main.js 是 ES 模块，属于死文件，
+  # 这里排除掉，避免它随安装包分发、也避免以后有人误以为它还在生效。
+  - "!dist-electron/main.js"
   - package.json
   - "!src/**"
 extraResources:

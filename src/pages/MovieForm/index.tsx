@@ -73,6 +73,10 @@ export default function MovieForm() {
   const [tmdbResults, setTmdbResults] = useState<TmdbSearchResult[]>([]);
   const [tmdbSearching, setTmdbSearching] = useState(false);
   const [tmdbImportingId, setTmdbImportingId] = useState<number | null>(null);
+  /** 上次导入的 TMDB 海报路径：海报下载失败时单独重试，不必重跑整次导入。 */
+  const [tmdbPosterPath, setTmdbPosterPath] = useState<string | null>(null);
+  const [tmdbPosterFailed, setTmdbPosterFailed] = useState(false);
+  const [tmdbPosterRetrying, setTmdbPosterRetrying] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -228,6 +232,43 @@ export default function MovieForm() {
     }
   }
 
+  /**
+   * 下载并填入 TMDB 海报。
+   *
+   * 单独成函数是因为海报走的是代理的**回源**链路（服务器先去 image.tmdb.org 取图），
+   * 比搜索/详情慢得多，可能超时；失败时要能只重试这一步，而不是重跑整次导入。
+   * 返回值只表示成败，错误提示由调用方决定措辞。
+   */
+  async function applyTmdbPoster(posterPath: string): Promise<boolean> {
+    const poster = await api.tmdb.getPoster(posterPath);
+    if (!poster.dataUrl) return false;
+    const imageType = poster.dataUrl.match(/^data:image\/([^;]+)/)?.[1];
+    const ext = imageType === 'png' ? '.png' : imageType === 'webp' ? '.webp' : '.jpg';
+    if (posterPreview && posterPreview.startsWith('blob:')) URL.revokeObjectURL(posterPreview);
+    setPosterBase64(poster.dataUrl);
+    setPosterExt(ext);
+    setPosterPreview(poster.dataUrl);
+    setExistingPosterUrl(null);
+    setPosterRemoved(false);
+    return true;
+  }
+
+  async function handleTmdbPosterRetry() {
+    if (!tmdbPosterPath) return;
+    try {
+      setTmdbPosterRetrying(true);
+      const ok = await applyTmdbPoster(tmdbPosterPath);
+      setTmdbPosterFailed(!ok);
+      if (ok) showToast('海报已导入');
+      else showErrorToast('海报下载失败，可稍后重试或手动上传');
+    } catch (err: any) {
+      setTmdbPosterFailed(true);
+      showErrorToast(err?.message || '海报下载失败，可稍后重试或手动上传');
+    } finally {
+      setTmdbPosterRetrying(false);
+    }
+  }
+
   async function handleTmdbImport(result: TmdbSearchResult) {
     try {
       setTmdbImportingId(result.id);
@@ -251,19 +292,22 @@ export default function MovieForm() {
         progress,
       }));
 
+      // 基本信息已经填进表单了，海报失败不该把它一起回滚成「导入失败」：
+      // 海报走的是更慢的回源链路（服务器先去 TMDB 取图），超时是已知情况。
+      setTmdbPosterPath(details.posterPath || null);
+      let posterFailed = false;
       if (details.posterPath) {
-        const poster = await api.tmdb.getPoster(details.posterPath);
-        if (poster.dataUrl) {
-          const imageType = poster.dataUrl.match(/^data:image\/([^;]+)/)?.[1];
-          const ext = imageType === 'png' ? '.png' : imageType === 'webp' ? '.webp' : '.jpg';
-          setPosterBase64(poster.dataUrl);
-          setPosterExt(ext);
-          setPosterPreview(poster.dataUrl);
-          setExistingPosterUrl(null);
+        try {
+          posterFailed = !(await applyTmdbPoster(details.posterPath));
+        } catch (err: any) {
+          posterFailed = true;
+          showErrorToast(err?.message || '海报下载失败，可点击「重试海报」或手动上传');
         }
+        if (posterFailed) showErrorToast('海报下载失败，可点击「重试海报」或手动上传');
       }
+      setTmdbPosterFailed(posterFailed);
       setTmdbResults([]);
-      showToast('已填充 TMDB 信息，请确认后保存');
+      if (!posterFailed) showToast('已填充 TMDB 信息，请确认后保存');
     } catch (err: any) {
       showErrorToast(err.message || '导入 TMDB 信息失败');
     } finally {
@@ -411,6 +455,20 @@ export default function MovieForm() {
                 ))}
               </div>
             )}
+            {tmdbPosterFailed && tmdbPosterPath && (
+              <p className="mt-2 text-xs text-text-muted">
+                影视信息已导入，只有海报没下载成功。
+                <button
+                  type="button"
+                  onClick={() => void handleTmdbPosterRetry()}
+                  disabled={tmdbPosterRetrying}
+                  className="ml-1 bg-transparent border-none p-0 text-accent-text cursor-pointer underline disabled:cursor-wait"
+                >
+                  {tmdbPosterRetrying ? '重试中...' : '重试海报'}
+                </button>
+                （也可以手动选择本地海报）
+              </p>
+            )}
             {!tmdbSearching && tmdbQuery.trim() && tmdbResults.length === 0 && (
               <p className="mt-2 text-xs text-text-muted">搜索后会在此处显示结果。</p>
             )}
@@ -550,6 +608,7 @@ export default function MovieForm() {
                     <label className="form-label">进度条目</label>
                     <p className="text-[11px] text-text-muted mb-2">
                       每期第一个分段写上期号（如「第 1 期上」），同一期后续只写「下」「加更上」即可，期号会自动跟随上一格。
+                      期号本身怎么写都行（先导片、特别篇、SP1…），保存后在详情页还能随时改。
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {segs.map((seg, i) => (

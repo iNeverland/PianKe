@@ -1097,6 +1097,150 @@ select:focus-visible,
   height: 1em;
 }
 
+/* ── 概览卡的「数值 + 变化量 + 上下文」结构 ──────────────────────────
+   与 .stat-card-icon 的旧规则并存：统计页已改用 .stat-card-top 包住图标，
+   这里把图标降为 14px 并与标签同行，数字因此成为卡片第一视觉。
+   旧规则保留给其它仍在使用「大图标 + 数字 + .stat-label」的页面。
+
+   纵向节奏是本组卡片的重点：四张卡的内容长度不同（纯数字 / 数字+h / — / 中文），
+   不锁定高度的话，下面的迷你折线与进度条会各自落在不同高度上。
+   因此：卡片纵向 flex → 数值行固定 40px → 图表行同为 26px → 脚注由 margin-top:auto 贴底，
+   四张卡的三行位置由此完全对齐。 */
+.stat-card {
+  display: flex;
+  flex-direction: column;
+}
+.stat-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+.stat-card-top .stat-card-icon {
+  font-size: 14px;
+  opacity: 1;
+  margin-bottom: 0;
+  display: inline-flex;
+  align-items: center;
+}
+.stat-card-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.stat-card-badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: var(--radius);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-text);
+  background: var(--accent-dim);
+  white-space: nowrap;
+}
+
+/* 数值行：固定行高，让下面两行的起点在四张卡里一致。
+   .stat-value 本身带 line-height:40px，这里再用 min-height 兜住"—"这类特殊值。 */
+.stat-card .stat-value {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  text-align: left;
+}
+
+/* 纯文字值（如「剧情 / 犯罪」）：中文字在 32px 下太重，单独一套字号。
+   必须带上 .stat-value 一起选（(0,2,0) > (0,1,0)），否则下面主题块里
+   `.stat-value { font-size: 32px }` 会把它盖回去。 */
+.stat-value.stat-value-text {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  line-height: 40px;
+  letter-spacing: 0;
+}
+
+/* 迷你折线容器：颜色决定线条与面积色（SVG 用 currentColor）。
+   高度 26px 与 .stat-bar 的行盒一致，这正是"四张卡的曲线在同一行"的实现方式。 */
+.stat-spark {
+  margin-top: 8px;
+  height: 26px;
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+.stat-spark svg {
+  width: 100%;
+  height: 26px;
+  display: block;
+}
+
+/* 比例条：平均评分（占 10 分）与最爱类型（占比）共用。
+   ⚠️ 对齐口径是**底对齐**，而且要减掉 SVG 的内衬：
+   折线的基线落在它 26px 通道里的 y=23（viewBox 26 高、上下各留 3px inset），
+   所以条不能简单贴通道底部（那是 y=26，实测差 3px），而要再抬 3px —— 见
+   .stat-bar-track 的 margin-bottom。三轮踩坑记录，别再改回去：
+   ① height:4px + align-self:center：align-self 在 flex 列里作用于**横轴**，
+      纵向无效，条中心比折线低 11px；
+   ② 26px 通道 + align-items:center：那是中心对齐，条落在 y=26 的居中位置，
+      底边与折线基线不齐；
+   ③ 26px 通道 + align-items:flex-end：条贴 y=26，比折线基线低 3px。 */
+.stat-bar {
+  display: flex;
+  align-items: flex-end;
+  margin-top: 8px;
+  width: 100%;
+  height: 26px;
+  flex: 0 0 auto;
+}
+.stat-bar-track {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  /* = SVG 的 inset：把 4px 的条抬到 y=23，与折线基线同线 */
+  margin-bottom: 3px;
+  border-radius: 2px;
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.stat-bar-track > i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+/* 卡片脚注：左侧是"是什么"，右侧是上下文。
+   ⚠️ 四张卡必须共用同一套纵向节奏（margin-top:12px + padding-top:8px），
+   不能有的用 auto 有的用固定值：实测"auto"会算成 22px，于是卡 1/2 与卡 3/4
+   的图表行到脚注的间距不同，看起来就像曲线没对齐（总高相同也救不了内部节奏）。
+   margin-top 用固定值而非 auto 还有一层原因：.stat-foot-single 覆盖 auto 时，
+   两张卡的脚注会被推到不同位置。 */
+.stat-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 8px;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--text-muted);
+}
+.stat-foot > span:last-child { text-align: right; }
+/* 单行模式（影视总数 / 观影时长）：脚注只有一段文字且禁止折行——
+   这两张卡的脚注一旦折行就会顶高卡片、破坏与其它卡的底部对齐。 */
+.stat-foot-single { justify-content: flex-start; }
+.stat-foot-single > span { white-space: nowrap; }
+
+.stat-stars {
+  color: var(--star-color);
+  letter-spacing: 1px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.stat-stars .is-empty { opacity: 0.3; }
+
 /* 色条（保留兼容） */
 .stat-card-accent-blue  { border-left: 3px solid #5470c6; }
 .stat-card-accent-orange { border-left: 3px solid #EF7800; }
@@ -1108,6 +1252,7 @@ select:focus-visible,
   font-size: 2rem;
   font-weight: 600;
   color: var(--text-primary);
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 
@@ -1224,7 +1369,8 @@ select:focus-visible,
   color: var(--text-secondary);
   white-space: nowrap;
 }
-/* 期数可编辑：只让数字成为输入框，"第" / "期" 保持为文字说明 */
+/* 期号完全自由可编辑：整个期号就是一个输入框（虚线底边是"可改"的提示），
+   不再拆成「第」+ 数字 + 「期」三段——先导片、特别篇、SP1 都很常见。 */
 .segment-period-edit {
   display: inline-flex;
   align-items: center;
@@ -1241,6 +1387,7 @@ select:focus-visible,
   font-variant-numeric: tabular-nums;
   text-align: center;
   outline: none;
+  cursor: text;
   transition: border-color 0.2s ease, color 0.2s ease;
 }
 .segment-period-input:hover {

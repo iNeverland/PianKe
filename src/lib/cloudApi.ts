@@ -1364,7 +1364,22 @@ function varietyProgressReviews(entries: DiaryEntry[], mediaType: string, segmen
 const WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 /**
- * 观影时长口径（与统计页保持一致）：只计入「已看完」，剧集/综艺按 片长 × 总集数。
+ * 最近 n 个月的 `YYYY-MM` 标签（含当前月，按时间正序）。
+ *
+ * 月度趋势原先只返回「有记录的月份」，前端再自己补零；统计页顶部概览卡的迷你折线
+ * 需要一份**定长 12 格**的序列，缺的月份必须是 0 而不是被跳过，所以这里统一补齐。
+ */
+function recentMonthLabels(n: number): string[] {
+  const now = new Date();
+  const months: string[] = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return months;
+}
+
+/** 观影时长口径（与统计页保持一致）：只计入「已看完」，剧集/综艺按 片长 × 总集数。
  * 抽出来是为了让月度总结与总览用同一把尺子 —— 原先月度总结直接写死 0。
  */
 function watchedMinutes(movies: MovieMetadata[]): number {
@@ -1391,33 +1406,76 @@ async function buildDashboard(): Promise<StatsDashboard> {
   const countryCount: Record<string, number> = {};
   const ratingCount: Record<number, number> = { 2: 0, 4: 0, 6: 0, 8: 0, 10: 0 };
   const monthCount: Record<string, number> = {};
+  const ratingValueCount: Record<number, number> = {};
+  const statusCounts: Record<WatchStatus, number> = { 想看: 0, 在看: 0, 已看完: 0 };
+  const hoursByMonth: Record<string, number> = {};
   let totalMinutes = 0;
   let personalTotal = 0;
   let personalCount = 0;
   for (const movie of movies) {
     typeCount[movie.mediaType] = (typeCount[movie.mediaType] || 0) + 1;
+    statusCounts[movie.status] = (statusCounts[movie.status] || 0) + 1;
     movie.genre.forEach((genre) => { genreCount[genre] = (genreCount[genre] || 0) + 1; });
     splitCountries(movie.country).forEach((country) => { countryCount[country] = (countryCount[country] || 0) + 1; });
     for (const record of recordsByMovie.get(movie.id) || []) {
-      if (record.rating > 0) { personalTotal += record.rating; personalCount++; }
+      if (record.rating > 0) {
+        personalTotal += record.rating;
+        personalCount++;
+        ratingValueCount[record.rating] = (ratingValueCount[record.rating] || 0) + 1;
+      }
       const bucket = ratingBucket(record.rating);
       if (bucket) ratingCount[bucket]++;
     }
     if (movie.status === '已看完') totalMinutes += movie.runtime * (movie.progress?.totalEpisodes || 1);
     if (movie.status !== '想看') {
-      for (const month of new Set((diariesByMovie.get(movie.id) || []).map((entry) => entry.watchDate.slice(0, 7)))) {
+      // 一部片在同一个月有多条日记时只算一次新增（与趋势图的「部数」口径一致）；
+      // 时长则按同一个月去重后累加，金额上等价于把 totalMinutes 分摊到观影月份里。
+      const months = new Set((diariesByMovie.get(movie.id) || []).map((entry) => entry.watchDate.slice(0, 7)));
+      const minutes = movie.status === '已看完' ? movie.runtime * (movie.progress?.totalEpisodes || 1) : 0;
+      for (const month of months) {
         monthCount[month] = (monthCount[month] || 0) + 1;
+        if (minutes > 0) hoursByMonth[month] = (hoursByMonth[month] || 0) + minutes / 60;
       }
     }
   }
   const round = (value: number) => Math.round(value * 10) / 10;
+  const recentMonths = recentMonthLabels(12);
+  const currentMonth = recentMonths[recentMonths.length - 1];
+  const previousMonth = recentMonths[recentMonths.length - 2];
+  const rankedGenres = Object.entries(genreCount).sort((a, b) => b[1] - a[1]);
+  // 出现最多的分值：并列时取较高的那个（对用户更"值得说"）
+  const topRatingEntry = Object.entries(ratingValueCount)
+    .sort((a, b) => b[1] - a[1] || Number(b[0]) - Number(a[0]))[0];
   return {
-    overview: { totalMovies: movies.length, totalHours: round(totalMinutes / 60), avgPersonalRating: personalCount ? round(personalTotal / personalCount) : null, mostWatchedGenre: Object.entries(genreCount).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([genre]) => genre) },
+    overview: {
+      totalMovies: movies.length,
+      totalHours: round(totalMinutes / 60),
+      avgPersonalRating: personalCount ? round(personalTotal / personalCount) : null,
+      mostWatchedGenre: rankedGenres.slice(0, 2).map(([genre]) => genre),
+      statusCounts,
+      addedThisMonth: monthCount[currentMonth] || 0,
+      addedLastMonth: monthCount[previousMonth] || 0,
+      hoursThisMonth: round(hoursByMonth[currentMonth] || 0),
+      hoursLastMonth: round(hoursByMonth[previousMonth] || 0),
+      ratedCount: personalCount,
+      topRating: topRatingEntry ? Number(topRatingEntry[0]) : null,
+      topGenre: rankedGenres[0]?.[0] ?? null,
+      topGenreCount: rankedGenres[0]?.[1] ?? 0,
+      // 注意：这里不再提供"类型标签总数"。占比的分母应是**影片总数**（该类型的影片
+      // 占全部影片的比例），用标签总数会把占比摊薄（一部片 5 个类型就成 1/5），
+      // 与"最爱类型占我片库多少"不是一回事。
+    },
     byType: (['电影', '剧集', '综艺', '纪录片', '动画'] as const).map((type) => ({ type, count: typeCount[type] || 0 })),
     byGenre: Object.entries(genreCount).map(([genre, count]) => ({ genre, count })).sort((a, b) => b.count - a.count),
     byCountry: Object.entries(countryCount).map(([country, count]) => ({ country, count })).sort((a, b) => b.count - a.count),
     diaryRatingDist: [[2, '★ 2分'], [4, '★★ 4分'], [6, '★★★ 6分'], [8, '★★★★ 8分'], [10, '★★★★★ 10分']].map(([stars, label]) => ({ stars: Number(stars), label: String(label), count: ratingCount[Number(stars)] })),
-    monthlyTrend: Object.entries(monthCount).map(([month, count]) => ({ month, count })).sort((a, b) => a.month.localeCompare(b.month)),
+    // 趋势固定给出最近 12 个月的定长序列（缺的月份补 0）：顶部迷你折线要用它保证横轴等距，
+    // 下面的折线图直接画这 12 格也比"跳过空月"更符合直觉。
+    monthlyTrend: recentMonths.map((month) => ({
+      month,
+      count: monthCount[month] || 0,
+      hours: round(hoursByMonth[month] || 0),
+    })),
   };
 }
 

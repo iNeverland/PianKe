@@ -240,7 +240,18 @@ node /opt/pianke/server/device-admin.mjs prune --days 90 --yes
 | 客户端反复重新注册 | 设备被频繁吊销，或服务端重启后设备库丢失 | `device-admin.mjs list` 看设备数与创建时间；确认 `devices.json` 落在 `/var/lib/pianke-tmdb` 而不是进程临时目录 |
 | `服务器未配置 TMDB_TOKEN`（500） | 服务端缺 TMDB 凭据 | 检查 `/opt/pianke/server/.env` 是否被误删 |
 | `请求过于频繁`（429） | 命中 60 次/分钟限流（桶 = 口令指纹 + IP） | 见上文「限流桶按口令指纹 + 客户端 IP 划分」 |
+| 导入时影视信息进来了、只有海报报 `TimeoutError` | 海报是**回源**下载（服务器先去 `image.tmdb.org` 取图再转发给客户端），链路比搜索/详情长得多；客户端到服务器之间如果走了本机代理软件（例如 Clash 的 fake-ip 隧道），几百 KB 的图很容易被拖到十几秒 | 客户端已按 `w500 → w342 → w154` 逐级降级，单个规格 20 秒超时，全失败时只提示海报缺失并提供「重试海报」。判断瓶颈在哪一段见下方命令 |
 | 握手 `tlsv1 alert internal error` | Caddy reload 后丢失 TLS 策略 | `systemctl restart caddy` |
+
+海报超时的分段定位（在**客户端主机**上跑，换成实际海报路径）：
+
+```bash
+curl -o poster.jpg -w '%{time_total}s %{size_download}B\n' \
+  'https://tmdb.astara.space/api/poster?path=/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg&width=w500'
+```
+
+同样超过 20 秒说明卡在客户端到服务器的链路（本机代理软件/线路），与服务器无关；
+只有服务端日志里同时出现 `[tmdb-server] ... 海报获取失败` 时，才是服务器到 TMDB 的回源问题。
 
 客户端侧连通性自检：`node scripts/check-tmdb-proxy.mjs`。
 
