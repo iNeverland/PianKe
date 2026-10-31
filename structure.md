@@ -13,7 +13,7 @@ PianKe 是一款用于收藏影视、记录观看过程和沉淀观后感的**�
 - 云端数据：PocketBase（认证、数据、私有文件）
 - 离线缓存：IndexedDB（数据快照、海报、截图、头像）
 - 影视元数据：TMDB + 自建 Node.js 代理（Caddy/Nginx 反代）
-- 图表：ECharts；Excel 导出：SheetJS（渲染进程按需加载）；图片处理：Capacitor Assets（构建期）
+- 图表：ECharts；Excel 导出：SheetJS（渲染进程按需加载）
 - 打包发布：electron-builder + GitHub Actions + 自建更新服务器
 
 **核心架构理念**：云端账户是唯一权威数据源。登录后数据同步到个人 PocketBase 空间；最近一次同步的数据与媒体缓存到本机 IndexedDB，弱网/离线时仍可浏览。
@@ -25,7 +25,6 @@ PianKe/
 ├── electron/                  # Electron 主进程（Node 环境）
 ├── src/                       # React 渲染进程（含 platform/ 平台抽象层）
 ├── shared/                    # 主/渲染进程共享的类型与工具
-├── android/                   # Capacitor Android 工程（Android Studio 打开）
 ├── server/                    # 服务端：PocketBase 迁移/hook + TMDB 代理
 ├── docs/                      # 架构与发布文档
 ├── build/                     # 安装器与签名配置
@@ -38,7 +37,6 @@ PianKe/
 ├── package.json               # 依赖与脚本（dev/build/package/electron:build 等）
 ├── electron-builder.yml       # 打包配置
 ├── vite.config.ts             # Vite + vite-plugin-electron 配置
-├── capacitor.config.ts        # Capacitor 配置（appId/webDir，Android 端）
 ├── tsconfig.json              # TypeScript 配置
 ├── tailwind.config.js         # Tailwind 主题配置
 ├── postcss.config.js
@@ -74,11 +72,8 @@ electron/
 ├── windows/
 │   ├── mainWindow.ts          # 主窗口
 │   └── splashWindow.ts        # 启动闪屏窗口
-├── types/
-│   └── sharp.d.ts             # sharp 类型声明（构建期外部依赖占位）
 └── utils/
-    ├── senderGuard.ts         # IPC 调用来源校验
-    └── writeQueue.ts          # 写队列串行化（更新器状态落盘）
+    └── senderGuard.ts         # IPC 调用来源校验
 ```
 
 ### 3.2 src/ —— 渲染进程（React）
@@ -90,7 +85,7 @@ src/
 ├── index.css                  # 全局样式（含暗色/亮色主题变量）
 ├── vite-env.d.ts
 ├── assets/
-│   ├── brand/                 # Logo 与品牌资源（default-avatar、PianKe.svg、library-folder）
+│   ├── brand/                 # Logo 与品牌资源（default-avatar、PianKe.svg）
 │   └── icons/                 # 图标（home/diary/stats/watchlist/photo/search 等）
 ├── components/
 │   ├── layout/                # AppShell、Header、Sidebar、TitleBar
@@ -104,7 +99,7 @@ src/
 │   ├── index.ts               # 按运行环境选择实现，导出 platform 实例
 │   ├── types.ts               # Platform 接口（窗口/更新/截图/TMDB/主题）
 │   ├── electron.ts            # Electron 实现（转发 window.electronAPI）
-│   └── capacitor.ts           # Capacitor/Android 占位实现
+│   └── web.ts                 # 纯浏览器预览的占位实现
 ├── lib/
 │   ├── api.ts                 # ⭐ 代理：登录后业务调用自动路由到 cloudApi，原生能力走平台抽象层
 │   ├── cloudApi.ts            # ⭐ 云端业务核心（约 1000 行）：CRUD、快照缓存、单飞去重、离线恢复
@@ -191,7 +186,7 @@ resources/
 React 页面与组件 (src/)
   → lib/api.ts
       业务数据：cloudApi → PocketBase（直连，不经 IPC）
-      原生能力：平台抽象层 (src/platform/) → Electron preload bridge (window.electronAPI) / Capacitor
+      原生能力：平台抽象层 (src/platform/) → Electron preload bridge (window.electronAPI)
   → IPC handler (electron/modules/<feature>/handler.ts)   # 仅 tmdb / updater / window
   → 主进程 service (electron/modules/<feature>/service.ts)
   → 云端 PocketBase / 本地离线缓存 (IndexedDB)
@@ -200,7 +195,7 @@ React 页面与组件 (src/)
 设计约束（见 docs/architecture.md）：
 
 - `shared/` 仅保存主进程和渲染进程共用的类型、日期工具和 IPC 契约。
-- `src/assets/brand/` 是应用 Logo 和资源库文件夹图标的唯一来源；构建时分别交给 Vite 和 electron-builder 使用。
+- `src/assets/brand/` 是应用 Logo 与品牌资源的唯一来源；构建时交给 Vite 打包。
 - `electron/modules/<feature>/handler.ts` 只负责 IPC 边界；业务规则只放在对应 `service.ts`。业务数据不设 IPC 通道，统一由渲染进程直连 PocketBase。
 - `src/components/` 只放可复用 UI；`src/pages/` 只组织路由页面和页面级状态。
 
@@ -271,16 +266,12 @@ React 页面与组件 (src/)
 | `npm run electron:build` | 构建当前系统的安装包 |
 | `npm run electron:build:win` | 构建 Windows NSIS 安装包 |
 | `npm run electron:build:win:signed` | 使用 Windows 代码签名配置构建安装包 |
-| `npm run android:sync` | 构建前端并同步到 Android 工程（build + cap sync） |
-| `npm run android:open` | 用 Android Studio 打开 Android 工程 |
-| `npm run android:run` | 构建并运行到已连接的 Android 设备/模拟器 |
 
 ## 7. 版本状态
 
-- 当前版本：v2.1.2（桌面端由 package.json 驱动；Android 侧 versionName 同步为 2.1.2，versionCode 4）
+- 当前版本：v2.1.2（由 package.json 驱动）
 - 架构演进：v1 为纯本地库架构（`electron/store`、`library` 模块、`.pianke` 文件）；v2 转型为云端账户 + 本地离线缓存架构，完全以云端为唯一数据源。v2 收尾时已把主进程侧的本地数据层（`modules/{movie,diary,watchRecord,watchlist,stats}`、`electron/store`、`utils/{paths,thumbnail,atomicWrite}`、`shared/schemas`、对应 IPC 通道与 `uuid`/`zod` 依赖）整体移除，主进程只保留原生能力。
-- 跨平台改造（第一阶段）：新增 `src/platform/` 平台抽象层，收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `platform` 访问，业务数据仍由 `cloudApi` 直连 PocketBase，为后续 Capacitor Android 端复用同一套 React UI 打基础。
-- 跨平台改造（第二阶段）：安装 Capacitor 8（@capacitor/core + @capacitor/cli + @capacitor/android），新增 `capacitor.config.ts`（appId=com.pianke.app、webDir=dist）与 `android/` 工程；Electron 构建流程保持不变，`npm run build` 产物可直接被 `npx cap sync android` 复用。
+- 平台抽象层：收敛渲染进程中所有 `window.electronAPI` 直接引用；原生能力（窗口/更新/截图/TMDB/主题）统一经 `src/platform/` 访问，业务数据仍由 `cloudApi` 直连 PocketBase。
 - 综艺分段结构化：`Progress.segments` 由 `string[]` 改为 `{ period, label }[]`，期号从「从标签文本里猜」变成显式字段；旧数据在读取时升级并由 `migrateVarietySegments` 一次性写回。综艺进度日记与 Excel 导出随之统一按「第 N 期 + 分段名」展示（详见 5.4.1）。
 - v2.1.1 收尾：综艺期号改为**完全自由文本**（`renamePeriod` 不再把「5」补成「第 5 期」，输入框按真实字体测量宽度），详情页按期分组改为**按添加顺序倒序**展示、折叠时固定显示最新添加的那一期（`SegmentGroup.maxIndex`）；主进程入口改产 `dist-electron/main.cjs`（Electron 34 内嵌 Node 20 加载不了 ESM 入口）；TMDB 海报按 `w500 → w342 → w154` 逐级降级并支持单独重试；统计页概览卡改为「数值 + 变化量 + 上下文」结构（字段见 `shared/types` 的 `StatsOverview`）。
 - v2.1.2：修复统计「本月新增/月度时长」口径、综艺“添加一期”未写入云端、新建影视未保存确认、状态切到“已看完”进度不补全、综艺分段并发写入覆盖等问题；新增统一页面错误态、CI 类型检查；服务端切换 dynamic user、头像文件 protected、验证码 IP 限流与过期清理；首屏海报改为 24 张分页 + 视口懒加载 + 使用预生成 300x450 缩略图，并合并同图并发下载。

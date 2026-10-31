@@ -445,7 +445,7 @@ export default function MovieDetail() {
     setUploadingScreenshots(true);
     let failures = 0;
     // 直传 File：省掉 base64 的三份内存副本，避免批量大图把渲染进程撑爆
-    // （移动端 WebView OOM；桌面端 render-process-gone 后自动 reload，未保存的表单输入会丢）。
+    // （render-process-gone 后自动 reload，未保存的表单输入会丢）。
     const upload = async (file: File) => {
       try {
         await api.movie.addScreenshotFile(id, file);

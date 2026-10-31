@@ -74,7 +74,7 @@ function listTrackedFiles() {
 }
 
 function walkFallback() {
-  const skipDirs = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release', '.gradle-home', '.android-sdk', '.android-home', 'build', 'data']);
+  const skipDirs = new Set(['.git', 'node_modules', 'dist', 'dist-electron', 'release', 'build', 'data']);
   const files = [];
   const visit = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

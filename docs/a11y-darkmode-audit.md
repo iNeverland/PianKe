@@ -1,6 +1,6 @@
 # PianKe 深色模式 & 无障碍（A11y）走查报告
 
-> 审查对象：PianKe v2.0.6（Electron 34 + React 19 + Tailwind 3，同一套产物经 Capacitor 打包 Android）
+> 审查对象：PianKe v2.0.6（Electron 34 + React 19 + Tailwind 3）
 > 审查维度：① 深色模式视觉与色彩架构 ② WCAG 2.1/2.2 AA+ 对比度 ③ 触控热区与布局弹性 ④ 读屏语义与交互流
 > 方法：静态走查 `src/index.css`（3644 行令牌与组件规则）、`src/**/*.tsx`（27 个页面/组件）、`index.html`、`electron/windows/*`、`src/assets/**/*.svg`；
 > 对比度使用 WCAG 2.x 相对亮度公式逐值实算（非估算），阈值取 4.5:1（正文）、3:1（大字/非文本/组件边界）。
@@ -36,7 +36,7 @@
 | DM-5 | `index.html:17-18`、`electron/windows/mainWindow.ts:26` | 首屏内联样式硬编码暗底 `#08080d`/`#e8e8f0`，Electron 窗口 `backgroundColor:'#ffffff'`：浅色主题用户看到暗闪、深色主题用户看到白闪（FOUC） | HIG「减少启动闪烁」 | 中 |
 | DM-6 | `index.html` 全文 | 未声明 `color-scheme`（也无 `theme-color`）：深色模式下原生控件、`input[type=date]` 弹层、Chromium 自动填充（浅黄/浅蓝底）仍按浅色绘制 | 1.4.3 周边一致性 | 中 |
 | DM-7 | `src/pages/Diary/index.tsx:18-28,418,457-471`、`src/pages/Stats/index.tsx:14-23,267,309`、`src/pages/PhotoWall/index.tsx:73-76`、`src/index.css:385,2031?` | 硬编码色绕过 token：日记热力图 6 组色 + `#c5c3bd`/`#8a8985`、Stats 7 色调色板 + 标签色、照片墙 12 色占位渐变、删除按钮 `#e53e3e`、窗口关闭 `#e81123` | 设计令牌单一来源 | 中 |
-| DM-8 | `src/assets/brand/PianKe.svg`、`library-folder.svg` | 品牌资产硬编码 `white` + 渐变（`#00E054`/`#40BCF4`/`#DF7101`），不随主题变化（18 个功能图标反而全部 `currentColor`，形成反差） | HIG 资产适配 | 低 |
+| DM-8 | `src/assets/brand/PianKe.svg` | 品牌资产硬编码 `white` + 渐变（`#00E054`/`#40BCF4`/`#DF7101`），不随主题变化（18 个功能图标反而全部 `currentColor`，形成反差） | HIG 资产适配 | 低 |
 
 ### 2.2 无障碍色彩对比度（CT，全部为实测值）
 
@@ -62,11 +62,9 @@
 |---|---|---|---|---|
 | TG-1 | `src/index.css:2029`（`.photo-wall-index button`） | **25×17px** 交互热区，低于 WCAG 2.2 AA 最小 24×24，更远低于 44/48 | 2.5.8 AA、HIG 44pt、M3 48dp | 高 |
 | TG-2 | `.tool-icon:2578`/`.sort-trigger:2469`（32×32）、`.password-toggle:1893`（30×30）、`.custom-datepicker-nav:2341`（28×28）、`.custom-datepicker-day:2391`（≈31×31，260px 弹层/7 列）、`.photo-wall-lightbox-close:2094`（40×40）、`StarRating` 默认 `size=20`（20×20，间距 4px） | 桌面端小图标控件密集不达 44×44；`StarRating` 20px 且相邻仅隔 4px，极易误触 | HIG 44×44、M3 48×48（WCAG 2.5.8 通过但体验不达标） | 高 |
-| TG-3 | `src/index.css:3618-3619`、`3601-3602`（`.platform-mobile .nav-item` 40×40、头像 40×40） | 移动端底部导航热区反而缩小到 40×40 | M3 48dp | 中 |
 | TG-4 | `.btn-sm:3305`（28 高）、`.filter-chip:3353`/`.status-btn:3358`/`.quick-action-btn:3362`（28 高）、`.theme-option:3534`（28 高）、`Diary` 删除按钮 `px-1.5 py-0.5`+`text-xs`（≈22 高） | 次按钮普遍 22–28px 高，触屏点按容错低 | M3 48dp、HIG 44pt | 中 |
-| TG-5 | `src/pages/Diary/index.tsx:308-310,378` | 两栏 `flex gap-8` + 右列固定 `w-[252px] flex-shrink-0`，`index.css` 内**无任何针对该布局的断点**（全文无 `252px`/heat 相关媒体查询）。390px 视口下（`--platform-mobile` padding 16px）时间线仅剩 ≈74px，320px 下不可用 | 1.4.10 Reflow AA、M3 自适应布局 | 高 |
+| TG-5 | `src/pages/Diary/index.tsx:308-310,378` | 两栏 `flex gap-8` + 右列固定 `w-[252px] flex-shrink-0`，`index.css` 内**无任何针对该布局的断点**（全文无 `252px`/heat 相关媒体查询）。窄视口下时间线会被挤压到不可用 | 1.4.10 Reflow AA、M3 自适应布局 | 高 |
 | TG-6 | `src/index.css:135`（`html{font-size:16px}`）、`.btn:3304`（固定 `height:32px`+`line-height:20px`）、`.theme-option` `min-height`、`.movie-title:1177`（`nowrap+ellipsis`）、多处 `white-space:nowrap` | `html` 用 px 覆盖用户默认字号；固定高 + 固定行高的按钮在"仅放大文字"（非整页缩放）场景会裁切/溢出；标题截断加剧 | 1.4.4 AA | 中 |
-| TG-7 | `src/index.css:3319-3326`（`.main-content` 移动端 padding/`overflow-y:auto`）、安全区处理 | **正例**：移动端已用 `env(safe-area-inset-*)` 避让刘海/手势条，滚动容器唯一且明确 | — | — |
 
 ### 2.4 读屏语义与交互流（SR）
 
@@ -215,12 +213,11 @@
 .custom-datepicker-nav::after, .modal-close-btn::after {
   content: ''; position: absolute; inset: -7px; border-radius: 8px;
 }
-/* 或直接 min 尺寸（更稳，建议用于移动端） */
+/* 或直接 min 尺寸（更稳，建议用于触控） */
 @media (pointer: coarse) {
   .tool-icon, .sort-trigger, .modal-close-btn { min-width: 44px; min-height: 44px; }
   .filter-chip, .status-btn, .quick-action-btn, .theme-option, .btn-sm { min-height: 44px; }
   .photo-wall-index button { min-width: 44px; min-height: 44px; }  /* 原 25×17 */
-  .platform-mobile .nav-item, .platform-mobile .sidebar-profile-entry { width: 48px; height: 48px; }
 }
 ```
 （`::after` 外扩方案要注意父容器 `overflow:hidden` 会被裁掉——`.custom-datepicker-popup`/`.movie-poster` 需检查。）
@@ -402,7 +399,6 @@ const onColor = (hex: string) => luminance(hex) > 0.42 ? '#12100C' : '#FFFFFF';
 - `prefers-reduced-motion: reduce` 全局降级（含新加入的回到顶部按钮的 JS 平滑滚动判断）。
 - Modal：Portal + `role="dialog"` + `aria-modal` + Tab 陷阱 + Esc + 关闭后回焦（`Modal.tsx:23-83`）。
 - 地标与结构：`<aside>`（Sidebar）、`<main>`（AppShell）、`<header>`（Header）、`<html lang="zh-CN">`；内容图片均有 `alt`，头像/装饰图 `alt=""` 正确。
-- 移动端安全区与滚动容器处理：`env(safe-area-inset-*)` + `.main-content` 单一滚动容器（`index.css:3541-3620`）。
 - 表单输入采用 `min-height` 而非固定 `height`（`.form-input:3498`），放大字号时不会裁切。
 
 ---
@@ -424,7 +420,7 @@ const onColor = (hex: string) => luminance(hex) > 0.42 ? '#12100C' : '#FFFFFF';
 | ① | 控件边界按用途分两档：`--border-control`（输入类的 3:1 边界，并以**下划线形态**承载，避免"满屏黑框"）+ `--border-strong`（弹窗/菜单/toast/卡片/带标签按钮的柔和发丝线，浅 1.69–1.87:1、深 1.88–2.37:1）；`--border` 仅保留装饰用途。开关轨道、主题切换选中态一并加强 | `index.css` 末尾「A11Y：控件边界与状态对比度」 |
 | ① | 日记热力图 6 组硬编码色改由 `--heat-*` 令牌驱动（月度 4 档 + 每日 3 档，删掉 `isDark` 分支与 MutationObserver）；照片墙索引字母由 1.68:1 改为 `--text-muted`（4.80:1）；海报叠加徽标提到 72% 黑（≥4.5:1）；`#e53e3e` → `--red` | `Diary/index.tsx`、`index.css` |
 | ① | 自动填充样式、`color-scheme`、首屏主题引导脚本（按 `film-log-theme` 预置 `data-theme`，消除明暗闪烁）；Electron 窗口底色改为跟随主题并在 `theme:update` 时同步；`themeSource` 默认 `system`；启动闪屏增加浅色变体 | `index.html`、`splash.html`、`electron/windows/mainWindow.ts`、`electron/main.ts`、`electron/modules/window/handler.ts` |
-| ② 触控与布局 | 日记页两栏加断点（≤900px 单栏，`sticky` 取消）；`html` 字号改 `100%`；`.btn`/`.btn-sm`/`.theme-option` 去掉固定高；`@media (pointer: coarse)` 提升关键控件到 44–48px（含日期格 40px、照片墙索引、移动端导航 48px）；0.55–0.64rem 的微型字号提到 0.62–0.68rem | `index.css`、`Diary/index.tsx` |
+| ② 触控与布局 | 日记页两栏加断点（≤900px 单栏，`sticky` 取消）；`html` 字号改 `100%`；`.btn`/`.btn-sm`/`.theme-option` 去掉固定高；`@media (pointer: coarse)` 提升关键控件到 44–48px（含日期格 40px、照片墙索引）；0.55–0.64rem 的微型字号提到 0.62–0.68rem | `index.css`、`Diary/index.tsx` |
 | ③ 键盘与读屏 | Toast 增加 `role="status"/"alert"` + `aria-live`（错误提示走新的 `showErrorToast`，39 处调用点已改），并支持手动关闭；`LoadingSkeleton` 加 `role="status"` + `.sr-only`；表单错误 `role="alert"` + `aria-invalid`/`aria-describedby` | `Toast.tsx`、`LoadingSkeleton.tsx`、`CloudAuth/index.tsx`、`PasswordInput.tsx` |
 | ③ | 悬浮才显示的删除按钮改 `.hover-reveal`（键盘聚焦可见 + `hover:none` 常显）；可点击 `div/span` → 真实 `button`（行项目、日记时间线、截图时间戳、演员展开、标签删除、海报区），14 → 4（剩余 4 处为灯箱遮罩/`stopPropagation` 容器与文件输入的 `label`，均属正常模式） | `Watching/Watchlist/Diary/MovieDetail/MovieForm/index.tsx` |
 | ③ | 右键菜单补齐 `role="menu"/menuitem`、↑↓/Home/End、打开聚焦首项、关闭回焦；卡片支持 Shift+F10/菜单键与触摸长按打开；Modal 改为锁定 `.main-content` 并对 `.app-shell` 加 `inert`，焦点陷阱过滤不可见元素；照片墙灯箱补焦点移入/循环/回焦与背景滚动锁 | `ContextMenu.tsx`、`MovieCard.tsx`、`Modal.tsx`、`PhotoWall/index.tsx` |
@@ -446,5 +442,5 @@ const onColor = (hex: string) => luminance(hex) > 0.42 ? '#12100C' : '#FFFFFF';
 1. **日期选择器方向键网格导航**：已具备 `aria-selected`/`aria-current` 与焦点移入/归还，但格子间仍需 Tab 逐个移动；建议按 ARIA APG Date Picker 补 ←→↑↓/PageUp/PageDown。
 2. **图表调色板与照片墙占位渐变的硬编码色**：属数据可视化配色与装饰性渐变，未纳入令牌；如需主题联动可抽 `--chart-1..7`。
 3. **深色弹窗层级**：弹窗与遮罩后页面的填充差仅 1.31:1，现靠 `--border-strong` 的边界做区分（面板边界不受 1.4.11 强制）；若想更接近 M3 elevation 语义，可单独提高弹窗表面明度。
-4. **品牌 SVG**：`PianKe.svg` / `library-folder.svg` 的白色与渐变是图标内部构成（白字形压在橙色底上），并非透明底反色问题；按 WCAG 1.4.3「logo 不受对比度约束」无需整改，仅属维护性建议。
+4. **品牌 SVG**：`PianKe.svg` 的白色与渐变是图标内部构成（白字形压在橙色底上），并非透明底反色问题；按 WCAG 1.4.3「logo 不受对比度约束」无需整改，仅属维护性建议。
 5. **真机读屏回归**：本次为代码与构建层验证，仍建议在 VoiceOver/TalkBack 上走一遍模态焦点、Toast 播报与日记页删除路径。

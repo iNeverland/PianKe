@@ -14,8 +14,8 @@ import type {
  * （影视/日记/追剧/想看/统计）不在此列：云端是唯一权威数据源，渲染进程统一经
  * src/lib/api.ts 使用 cloudApi（直连 PocketBase），天然跨平台。
  *
- * React UI 只依赖本接口，不直接依赖 window.electronAPI 或 Capacitor，从而让同一套
- * UI 跑在 Electron（桌面）与 Capacitor（Android）上。
+ * React UI 只依赖本接口，不直接依赖 window.electronAPI：桌面端由 Electron 实现，
+ * 纯浏览器预览时回退到 web.ts 的占位实现。
  */
 
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -45,8 +45,8 @@ export interface PlatformTmdb {
 
 export interface Platform {
   /** 实现标识，便于 UI 按平台做渐进适配（如隐藏标题栏）。 */
-  readonly name: 'electron' | 'capacitor' | 'web';
-  /** 底层平台标识：Electron 为 process.platform；Android 为 'android'。 */
+  readonly name: 'electron' | 'web';
+  /** 底层平台标识：Electron 为 process.platform；浏览器预览为 'web'。 */
   readonly platform: string;
 
   setTheme(mode: ThemeMode): Promise<void>;

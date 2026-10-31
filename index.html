@@ -7,7 +7,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="color-scheme" content="light dark" />
     <!--
-      移动端（Capacitor WebView）没有 Electron 主进程那层响应头 CSP，这里用 meta 补齐。
+      浏览器预览与开发服务器没有 Electron 主进程那层响应头 CSP，这里用 meta 兜底。
       必须是「Electron 生产 CSP 的超集」，否则两者取交集后会收紧桌面端行为：
       各指令都带上 file:，font-src 覆盖响应头 default-src 的回退，script-src 里的
       'unsafe-eval' 只为 Vite dev server 保留（Electron 生产响应头没有它，取交集后

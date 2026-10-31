@@ -24,7 +24,7 @@ const nativeApi: NativeApi = platform;
 
 /**
  * 业务数据统一走 cloudApi（直连 PocketBase），原生能力统一走平台抽象层
- * （Electron 实现 / Capacitor 占位）。
+ * （Electron 实现；纯浏览器预览使用 web 占位实现）。
  *
  * 这里刻意不用在运行时按登录态分发的 Proxy：未登录时 App 只渲染登录页，登录后
  * 业务命名空间必然由云端接管，任何本地回退分支都是不可达的死代码。用交叉类型

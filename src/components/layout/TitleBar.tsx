@@ -23,7 +23,7 @@ export default function TitleBar() {
     };
   }, [isMac]);
 
-  // 移动端（Capacitor/Web）没有窗口边框与窗口控制按钮，整条标题栏不渲染。
+  // 浏览器预览没有窗口边框与窗口控制按钮，整条标题栏不渲染。
   if (platform.name !== 'electron') return null;
 
   const handleMinimize = () => api.window?.minimize?.();

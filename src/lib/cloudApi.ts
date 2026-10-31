@@ -633,8 +633,8 @@ async function compressScreenshotForUpload(dataUrl: string, maxEdge = 1920, qual
  * 但全程走 Blob + Canvas，不产生 base64 中间串，也不把原图整份复制到内存。
  *
  * 为什么需要它：base64 路径下同一张图会同时存在 3 份（base64 字符串、atob 结果、
- * Uint8Array 拷贝）。批量上传大图时这是移动端 WebView OOM、桌面端渲染进程被杀
- * （随后自动 reload，未保存的表单输入全丢）的主要来源。
+ * Uint8Array 拷贝）。批量上传大图时这是渲染进程内存暴涨、进程被杀（随后自动
+ * reload，未保存的表单输入全丢）的主要来源。
  */
 async function compressImageFileForUpload(file: File, maxEdge = 1920, quality = 0.85): Promise<Blob> {
   if (!file.type.startsWith('image/')) return file;

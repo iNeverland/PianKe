@@ -10,7 +10,7 @@ React 页面与组件 (src/)
 ```
 
 - `shared/` 仅保存主进程和渲染进程共用的类型、日期工具和 IPC 契约。
-- `src/assets/brand/` 是应用 Logo 和资源库文件夹图标的唯一来源；构建时分别交给 Vite 和 electron-builder 使用。
+- `src/assets/brand/` 是应用 Logo 与品牌资源的唯一来源；构建时交给 Vite 打包。
 - `electron/modules/<feature>/handler.ts` 只负责 IPC 边界；业务规则只放在对应 `service.ts`。业务数据不设 IPC 通道。
 - `src/components/` 只放可复用 UI；`src/pages/` 只组织路由页面和页面级状态。
 

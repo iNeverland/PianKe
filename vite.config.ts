@@ -129,7 +129,6 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['sharp'],
               output: {
                 // ⚠️ 主进程必须产出 CommonJS，且刻意用 .cjs 扩展名。
                 //

@@ -17,10 +17,6 @@ files:
   - package.json
   - "!src/**"
 extraResources:
-  - from: src/assets/brand/PianKe.svg
-    to: PianKe.svg
-  - from: src/assets/brand/library-folder.svg
-    to: 文件夹.svg
   - from: resources/tmdb-proxy.json
     to: tmdb-proxy.json
 win:

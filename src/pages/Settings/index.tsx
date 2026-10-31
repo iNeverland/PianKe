@@ -134,7 +134,7 @@ export default function Settings() {
       document.documentElement.removeAttribute('data-theme');
     }
 
-    // 同步平台原生主题（Electron 为 nativeTheme，Android 为 no-op）
+    // 同步平台原生主题（Electron 为 nativeTheme，浏览器预览为 no-op）
     platform.setTheme(mode);
   }
 
