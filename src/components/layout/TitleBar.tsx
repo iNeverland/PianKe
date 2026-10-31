@@ -10,8 +10,17 @@ export default function TitleBar() {
     if (isMac) return;
     const win = api.window;
     if (!win) return;
-    win.isMaximized?.().then(setIsMaximized);
-    win.onMaximizeChange?.((v: boolean) => setIsMaximized(v));
+    let active = true;
+    void win.isMaximized?.().then((value) => {
+      if (active) setIsMaximized(value);
+    }).catch(() => {});
+    const unsubscribe = win.onMaximizeChange?.((value: boolean) => {
+      if (active) setIsMaximized(value);
+    });
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
   }, [isMac]);
 
   // 移动端（Capacitor/Web）没有窗口边框与窗口控制按钮，整条标题栏不渲染。

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import { useInView } from '@/hooks/useInView';
 import AppIcon from './AppIcon';
 
 interface PosterThumbProps {
@@ -11,20 +12,40 @@ interface PosterThumbProps {
 
 export default function PosterThumb({ movieId, hasPoster, alt, className }: PosterThumbProps) {
   const [url, setUrl] = useState<string | null>(null);
+  const { ref, inView } = useInView<HTMLDivElement>();
 
   useEffect(() => {
-    if (hasPoster) {
-      api.movie.getPosterUrl(movieId, true).then(setUrl).catch(() => {});
+    let active = true;
+    setUrl(null);
+    if (!inView || !hasPoster) {
+      return () => { active = false; };
     }
-  }, [movieId, hasPoster]);
+    api.movie.getPosterCardUrl(movieId)
+      .then((value) => {
+        if (active && value) setUrl(value);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [inView, movieId, hasPoster]);
 
   if (!url) {
     return (
-      <div className={`${className} flex items-center justify-center text-text-muted bg-bg-elevated`}>
+      <div ref={ref} className={`${className} flex items-center justify-center text-text-muted bg-bg-elevated`}>
         <AppIcon name="image" className="w-6 h-6" />
       </div>
     );
   }
 
-  return <img src={url} alt={alt} className={className} loading="lazy" decoding="async" />;
+  return (
+    <div ref={ref} className={className}>
+      <img
+        src={url}
+        alt={alt}
+        className={className}
+        loading="lazy"
+        decoding="async"
+        onError={() => setUrl(null)}
+      />
+    </div>
+  );
 }

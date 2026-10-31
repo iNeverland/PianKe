@@ -26,7 +26,7 @@ export interface PlatformWindow {
   close(): Promise<void>;
   isMaximized(): Promise<boolean>;
   /** 返回取消订阅函数；桌面端由主进程推送最大化状态变化。 */
-  onMaximizeChange(callback: (isMaximized: boolean) => void): void;
+  onMaximizeChange(callback: (isMaximized: boolean) => void): () => void;
 }
 
 export interface PlatformUpdater {

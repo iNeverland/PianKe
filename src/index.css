@@ -2265,7 +2265,9 @@ button.back-to-top:hover:not(:disabled) {
 
 .modal-content {
   background: var(--bg-elevated); border-radius: var(--radius-xl);
-  padding: 28px; min-width: 400px; max-width: 560px; max-height: 80vh;
+  /* width 由 Modal 的 width/maxWidth 内联样式决定；这里不能再写 min-width:400px，
+     否则 360/380px 的弹窗会被强制撑到 400px，在窄屏 Android 上溢出。 */
+  padding: 28px; min-width: 0; max-width: 560px; max-height: 80vh;
   overflow-y: auto; box-shadow: var(--shadow-lg);
   border: 1px solid var(--border);
   animation: modalContentIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);

@@ -7,7 +7,7 @@ import UpdateDialog from './components/common/UpdateDialog';
 import { getShortcutConfig, toAccelerator } from './hooks/useScreenshotShortcut';
 import CloudAuth from './pages/CloudAuth';
 import { getCloudUser, subscribeCloudAuth, type CloudUser } from './lib/pocketbase';
-import { hydrateOfflineCloudCache, POSTER_THUMB_SIZE } from './lib/cloudApi';
+import { hydrateOfflineCloudCache, POSTER_CARD_THUMB_SIZE } from './lib/cloudApi';
 import { getOfflineMedia } from './lib/offlineCache';
 import api from './lib/api';
 import { platform } from '@/platform';
@@ -49,13 +49,13 @@ async function getPickerPosterDataUrl(movie: MovieSummary): Promise<string | und
   // 登录态限制。key 与 cloudApi 的缩略图预热逻辑保持一致。
   const ownerId = getCloudUser()?.id;
   if (ownerId) {
-    const mediaKey = `movies:${movie.id}:${filename}:${POSTER_THUMB_SIZE}`;
+    const mediaKey = `movies:${movie.id}:${filename}:${POSTER_CARD_THUMB_SIZE}`;
     const cachedBlob = await getOfflineMedia(ownerId, mediaKey).catch(() => null);
     if (cachedBlob) return blobToDataUrl(cachedBlob);
   }
 
   // 本地缓存尚未预热时才请求云端，并转成可跨 Electron 窗口显示的 data URL。
-  const url = await api.movie.getPosterUrl(movie.id, true).catch(() => null);
+  const url = await api.movie.getPosterCardUrl(movie.id).catch(() => null);
   if (!url) return undefined;
   if (url.startsWith('data:')) return url;
   const blob = await fetch(url).then((response) => response.ok ? response.blob() : null).catch(() => null);

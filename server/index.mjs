@@ -12,8 +12,18 @@ const CHINESE_REGION_NAMES = new Intl.DisplayNames(['zh-CN'], { type: 'region' }
 
 function loadDotEnv() {
   const filePath = path.join(path.dirname(fileURLToPath(import.meta.url)), '.env');
-  if (!fs.existsSync(filePath)) return;
-  for (const line of fs.readFileSync(filePath, 'utf-8').split(/\r?\n/)) {
+  let content;
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    // systemd 的 EnvironmentFile 会以 root 读取 .env 并注入环境；动态用户
+    // 本身可能没有权限读这个 0600 文件，此时直接依赖已注入的 process.env。
+    if (err.code !== 'ENOENT' && !process.env.STATE_DIRECTORY) {
+      console.warn(`[env] 无法读取 ${filePath}：${err.message}`);
+    }
+    return;
+  }
+  for (const line of content.split(/\r?\n/)) {
     const match = line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/);
     if (!match || process.env[match[1]] !== undefined) continue;
     process.env[match[1]] = match[2].replace(/^['"]|['"]$/g, '');

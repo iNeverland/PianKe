@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import api from '@/lib/api';
 import { getCloudScreenshotsByMovie, listCloudMediaMovies } from '@/lib/cloudApi';
 import Header from '@/components/layout/Header';
+import ErrorState from '@/components/common/ErrorState';
 import PosterThumb from '@/components/common/PosterThumb';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
@@ -267,6 +268,8 @@ export default function PhotoWall() {
   const previewMode = import.meta.env.DEV && new URLSearchParams(location.search).get('preview') === '1';
   const [movies, setMovies] = useState<WallMovie[]>(previewMode ? PREVIEW_WALL : []);
   const [loading, setLoading] = useState(!previewMode);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [wallWidth, setWallWidth] = useState(0);
   const [selectedMedia, setSelectedMedia] = useState<{ movie: WallMovie; index: number } | null>(null);
   const [activeInitial, setActiveInitial] = useState<string | null>(null);
@@ -277,6 +280,7 @@ export default function PhotoWall() {
     let active = true;
     const loadPhotoWall = async (showLoading = false) => {
       if (showLoading && active) setLoading(true);
+      if (active) setLoadError(false);
       try {
         const [summaries, screenshotsByMovie] = await Promise.all([
           listCloudMediaMovies(),
@@ -305,6 +309,7 @@ export default function PhotoWall() {
         if (active) setMovies(groups.filter((movie) => movie.media.some((media) => media.kind === 'screenshot' || media.hasPoster)));
       } catch (error) {
         console.error('加载照片墙失败', error);
+        if (active) setLoadError(true);
       } finally {
         if (active) setLoading(false);
       }
@@ -327,7 +332,7 @@ export default function PhotoWall() {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
       window.removeEventListener('screenshot:saved', handleScreenshotSaved);
     };
-  }, [previewMode]);
+  }, [previewMode, reloadKey]);
 
   useEffect(() => {
     if (loading) return;
@@ -347,6 +352,18 @@ export default function PhotoWall() {
   }
 
   if (loading) return <><Header title="照片墙" subtitle="加载中..." showAdd={false} /><LoadingSkeleton rows={6} /></>;
+
+  if (loadError) {
+    return (
+      <div className="photo-wall-page">
+        <Header title="照片墙" subtitle="加载失败" showAdd={false} />
+        <ErrorState
+          description="无法加载照片墙。请检查网络或登录状态后重试。"
+          onRetry={() => setReloadKey((key) => key + 1)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="photo-wall-page">

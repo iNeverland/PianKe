@@ -58,6 +58,9 @@ jobs:
       - name: 安装依赖
         run: npm ci
 
+      - name: 类型检查
+        run: npm run typecheck
+
       - name: 构建更新文件
         run: ${{ matrix.command }} --publish never
         env:

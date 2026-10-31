@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '@/lib/api';
 import type { DiaryTimelineMonth } from '@shared/types/index';
 import EmptyState from '@/components/common/EmptyState';
+import ErrorState from '@/components/common/ErrorState';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
 import PosterThumb from '@/components/common/PosterThumb';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
@@ -28,6 +29,7 @@ export default function Diary() {
   const navigate = useNavigate();
   const [timeline, setTimeline] = useState<DiaryTimelineMonth[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const now = useMemo(() => new Date(), []);
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth() + 1);
@@ -45,11 +47,14 @@ export default function Diary() {
   }, []);
 
   async function loadTimeline() {
+    setLoading(true);
+    setLoadError(false);
     try {
       const data = await api.diary.getTimeline();
       setTimeline(data);
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -238,6 +243,18 @@ export default function Diary() {
       <LoadingSkeleton rows={5} />
     </div>
   );
+
+  if (loadError) {
+    return (
+      <div>
+        <Header title="观影日记" subtitle="加载失败" showAdd={false} />
+        <ErrorState
+          description="无法加载观影日记。请检查网络或登录状态后重试。"
+          onRetry={() => { void loadTimeline(); }}
+        />
+      </div>
+    );
+  }
 
   if (timeline.length === 0) {
     return (

@@ -18,7 +18,7 @@ export interface ElectronAPI {
     maximize: () => Promise<void>;
     close: () => Promise<void>;
     isMaximized: () => Promise<boolean>;
-    onMaximizeChange: (callback: (isMaximized: boolean) => void) => void;
+    onMaximizeChange: (callback: (isMaximized: boolean) => void) => () => void;
   };
   updater: {
     getState: () => Promise<AppUpdateState>;

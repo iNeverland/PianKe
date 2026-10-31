@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { AppUpdateState } from '@shared/types/index';
 import { platform } from '@/platform';
 import { showErrorToast, showToast } from './Toast';
@@ -12,6 +12,10 @@ function getLocalDateKey(): string {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const date = String(now.getDate()).padStart(2, '0');
   return `${now.getFullYear()}-${month}-${date}`;
+}
+
+function promptKey(state: AppUpdateState): string {
+  return `${state.status}:${state.version || 'unknown'}`;
 }
 
 function shouldOpenDialog(state: AppUpdateState): boolean {
@@ -28,14 +32,21 @@ export default function UpdateDialog() {
   const [update, setUpdate] = useState<AppUpdateState | null>(null);
   const [visible, setVisible] = useState(false);
   const [startingDownload, setStartingDownload] = useState(false);
+  // 用户主动关闭后记住“状态 + 版本”：进度事件不能把弹窗重新弹出来，
+  // 但下载完成/新版本等状态变化仍应再次提示。
+  const dismissedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const updater = platform.updater;
     if (!updater) return;
 
     const receiveState = (nextState: AppUpdateState) => {
+      // 手动检查是用户主动发起的，重置忽略状态，保证能看到结果。
+      if (nextState.checkSource === 'manual' && nextState.status === 'available') {
+        dismissedKeyRef.current = null;
+      }
       setUpdate(nextState);
-      if (shouldOpenDialog(nextState)) {
+      if (shouldOpenDialog(nextState) && dismissedKeyRef.current !== promptKey(nextState)) {
         setVisible(true);
         if (nextState.status !== 'available') setStartingDownload(false);
       }
@@ -45,6 +56,11 @@ export default function UpdateDialog() {
     void updater.getState().then(receiveState).catch(() => undefined);
     return unsubscribe;
   }, []);
+
+  const dismiss = () => {
+    if (update) dismissedKeyRef.current = promptKey(update);
+    setVisible(false);
+  };
 
   const handleDownload = async () => {
     if (!update || update.status !== 'available') return;
@@ -71,7 +87,7 @@ export default function UpdateDialog() {
   return (
     <Modal
       open={visible}
-      onClose={() => setVisible(false)}
+      onClose={dismiss}
       title={isAvailable ? '发现新版本' : isDownloaded ? '更新下载完成' : '正在下载更新'}
       width="440px"
     >
@@ -116,7 +132,7 @@ export default function UpdateDialog() {
           <div className="mt-6 flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => setVisible(false)}
+              onClick={dismiss}
               className="rounded-btn px-4 py-2 text-xs text-text-secondary transition-colors hover:bg-bg-secondary"
             >
               取消

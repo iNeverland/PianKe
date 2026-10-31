@@ -6,10 +6,15 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# 不用 root 运行网络服务：systemd 会创建临时用户，并让 StateDirectory 归它所有。
+# .env 仍由 systemd 以 root 读取后通过 EnvironmentFile 注入，服务进程不需要读权限。
+DynamicUser=true
+UMask=0077
 WorkingDirectory=/opt/pianke/server
 ExecStart=/usr/bin/node index.mjs
 
-# 敏感配置放在 .env（chmod 600），由 index.mjs 的 loadDotEnv() 自行加载
+# 敏感配置放在 .env（chmod 600）。EnvironmentFile 由 systemd 以 root 读取；
+# index.mjs 的 loadDotEnv() 也会尝试读取，权限不足时依赖这里注入的环境变量。
 EnvironmentFile=-/opt/pianke/server/.env
 
 # 设备凭据库的存放目录。systemd 会创建 /var/lib/pianke-tmdb 并把可写路径注入
@@ -21,13 +26,17 @@ StateDirectoryMode=0700
 # 安全加固
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
 ProtectSystem=strict
 ProtectHome=true
+ProtectClock=true
+ProtectHostname=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 RestrictNamespaces=true
+RestrictRealtime=true
 LockPersonality=true
 MemoryDenyWriteExecute=false
 

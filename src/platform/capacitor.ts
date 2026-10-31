@@ -27,7 +27,7 @@ export const capacitorPlatform: Platform = {
     maximize: async () => {},
     close: async () => {},
     isMaximized: async () => false,
-    onMaximizeChange: () => {},
+    onMaximizeChange: () => () => {},
   },
 
   updater: {

@@ -6,6 +6,8 @@ import MovieGrid from '@/components/movie/MovieGrid';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
 import { GridSkeleton } from '@/components/common/LoadingSkeleton';
+import ErrorState from '@/components/common/ErrorState';
+import { showErrorToast } from '@/components/common/Toast';
 
 const TYPE_OPTIONS: { label: string; value: MediaType | '' }[] = [
   { label: '全部', value: '' },
@@ -30,6 +32,9 @@ const SORT_OPTIONS: { label: string; value: string }[] = [
   { label: '添加时间', value: 'added' },
   { label: '标题', value: 'title' },
 ];
+
+/** 首屏只渲染一页卡片；配合 MovieCard 的视口懒加载，避免一次请求几十张海报。 */
+const PAGE_SIZE = 24;
 
 /** 从 localStorage 读取最近观看天数，默认 7 */
 function getRecentDays(): number {
@@ -110,6 +115,8 @@ export default function Home() {
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const [filterType, setFilterType] = useState<MediaType | ''>('');
   const [filterStatus, setFilterStatus] = useState<WatchStatus | ''>('');
@@ -120,7 +127,7 @@ export default function Home() {
   const sortRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [visibleCount, setVisibleCount] = useState(60);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   // 监听全局键盘快捷键触发的聚焦搜索框事件
   useEffect(() => {
@@ -148,6 +155,9 @@ export default function Home() {
   }, [sortOpen, filterOpen]);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
     (async () => {
       try {
         // 最近观看只是完整摘要的派生结果；一次读取即可，避免冷启动时重复请求云端。
@@ -158,18 +168,22 @@ export default function Home() {
         const recent = summary
           .filter((movie) => (movie.latestWatchDate || '') >= cutoffText)
           .sort((a, b) => (b.latestWatchDate || '').localeCompare(a.latestWatchDate || ''));
+        if (!active) return;
         setAllMovies(summary);
         setRecentMovies(recent);
       } catch (err) {
         console.error(err);
+        if (active) setLoadError(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
-  }, []);
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const [searchResults, setSearchResults] = useState<MovieSummary[] | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestSeq = useRef(0);
 
   useEffect(() => {
     if (search.trim()) {
@@ -177,14 +191,28 @@ export default function Home() {
       searchTimerRef.current = setTimeout(() => {
         const { query, year, minRating, maxRating } = parseSearchFilters(search);
         const hasFilters = year || minRating != null || maxRating != null;
+        const requestSeq = ++searchRequestSeq.current;
         api.movie.search(query, hasFilters ? { year, minRating, maxRating } : undefined)
-          .then(setSearchResults)
-          .catch(() => {});
+          .then((results) => {
+            // 只接受最新一次搜索的响应：清空搜索框或输入新关键词后，
+            // 旧请求晚到不能把旧结果重新塞回列表。
+            if (requestSeq === searchRequestSeq.current) setSearchResults(results);
+          })
+          .catch((err) => {
+            if (requestSeq === searchRequestSeq.current) {
+              console.error(err);
+              showErrorToast('搜索失败，请稍后重试');
+            }
+          });
       }, 300);
     } else {
+      searchRequestSeq.current++;
       setSearchResults(null);
     }
-    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      searchRequestSeq.current++;
+    };
   }, [search]);
 
   const filteredMovies = useMemo(() => {
@@ -196,8 +224,11 @@ export default function Home() {
         if (filterRating === 'none') {
           if (m.personalRating != null) return false;
         } else {
-          const target = Number(filterRating);
-          if (m.personalRating !== target) return false;
+          // personalRating 是保留一位小数的平均值（如 7.5），不能和 8 做精确比较。
+          // 这里按星档（2/4/6/8/10）取整，与统计页 ratingBucket 的口径一致。
+          if (m.personalRating == null) return false;
+          const bucket = Math.max(2, Math.min(10, Math.round(m.personalRating / 2) * 2));
+          if (bucket !== Number(filterRating)) return false;
         }
       }
       return true;
@@ -232,7 +263,10 @@ export default function Home() {
       setSearchResults((prev) => (prev
         ? prev.map((movie) => summary.find((item) => item.id === movie.id) ?? movie)
         : prev));
-    } catch { /* 静默 */ }
+    } catch (err) {
+      console.error(err);
+      showErrorToast('状态已更新，但刷新列表失败，请稍后重试');
+    }
   }
 
   function handleMovieDelete(id: string) {
@@ -246,6 +280,18 @@ export default function Home() {
       <div>
         <Header title="我的影院" subtitle="加载中..." />
         <GridSkeleton />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div>
+        <Header title="我的影院" subtitle="加载失败" showAdd={false} />
+        <ErrorState
+          description="无法加载你的影视库。请检查网络或登录状态后重试。"
+          onRetry={() => setReloadKey((key) => key + 1)}
+        />
       </div>
     );
   }
@@ -395,7 +441,7 @@ export default function Home() {
       {visibleCount < filteredMovies.length && (
         <div className="flex justify-center py-8">
           <button
-            onClick={() => setVisibleCount(prev => prev + 60)}
+            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
             className="btn btn-secondary"
           >
             加载更多（剩余 {filteredMovies.length - visibleCount} 部）

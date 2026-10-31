@@ -22,7 +22,9 @@ const electronAPI = {
     close: () => ipcRenderer.invoke('window:close'),
     isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
     onMaximizeChange: (callback) => {
-      ipcRenderer.on('window:maximizeChanged', (_event, isMaximized) => callback(isMaximized));
+      const handler = (_event, isMaximized) => callback(isMaximized);
+      ipcRenderer.on('window:maximizeChanged', handler);
+      return () => ipcRenderer.removeListener('window:maximizeChanged', handler);
     },
   },
 

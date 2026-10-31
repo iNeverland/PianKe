@@ -24,10 +24,14 @@ interface Snapshot {
 const SNAPSHOT_TTL_MS = 60_000;
 const FILE_TOKEN_TTL_MS = 4 * 60_000;
 const SCREENSHOT_CACHE_TTL_MS = 60_000;
-// 云端缩略图尺寸：照片墙/卡片在 HiDPI 屏上放大查看时仍需足够清晰。
+// 云端缩略图尺寸：卡片优先使用 PocketBase 已预生成的尺寸，避免首次打开首页时
+// 每张海报都让服务器现场缩图；详情/灯箱再按需使用更大的 600x900。
+export const POSTER_CARD_THUMB_SIZE = '300x450';
 export const POSTER_THUMB_SIZE = '600x900';
+// 截图缩略图同时用于灯箱原图失败后的兜底，保持较高分辨率；
+// 它只在照片墙/灯箱按需请求，不参与首页首屏海报加载。
 export const SCREENSHOT_THUMB_SIZE = '960x540';
-const MEDIA_WARM_CONCURRENCY = 3;
+const MEDIA_WARM_CONCURRENCY = 2;
 
 // 首页、统计与日记会在同一时间读取相同的基础数据。缓存「进行中的请求」可以
 // 避免它们在缓存尚未写入时重复下载整套数据。
@@ -63,6 +67,8 @@ let allScreenshotsCache: { value: Map<string, ScreenshotInfo[]>; expiresAt: numb
 let mediaWarmRequest: Promise<void> | null = null;
 let mediaWarmOwnerId: string | null = null;
 const mediaObjectUrls = new Map<string, string>();
+// 同一张缩略图可能同时被可见卡片和后台预热请求；合并成一次下载。
+const mediaFetches = new Map<string, Promise<Blob | null>>();
 
 /**
  * 展示用 Blob URL 的上限。
@@ -88,6 +94,17 @@ function rememberMediaObjectUrl(key: string, url: string): string {
     if (oldestUrl) URL.revokeObjectURL(oldestUrl);
   }
   return url;
+}
+
+/**
+ * 同一张图可能被首页“最近观看”和“全部影视”同时请求；如果两个请求各自
+ * createObjectURL，后一个会 revoke 前一个，前一个还没解码的 <img> 就会断图。
+ * 这里复用同一个 key 已存在的 URL。
+ */
+function mediaObjectUrlFor(key: string, blob: Blob): string {
+  const existing = mediaObjectUrls.get(key);
+  if (existing) return existing;
+  return rememberMediaObjectUrl(key, URL.createObjectURL(blob));
 }
 
 // 列表与统计不需要传输简介、演员等大字段；详情页仍通过 getOne 读取完整资料。
@@ -226,6 +243,7 @@ function clearCloudCaches(): void {
   cloudSyncFirstQueuedAt = 0;
   for (const url of mediaObjectUrls.values()) URL.revokeObjectURL(url);
   mediaObjectUrls.clear();
+  mediaFetches.clear();
 }
 
 // 同一 Electron 窗口可以登出后切换账号。必须清掉内存记录与文件 token，避免
@@ -517,6 +535,12 @@ function toLocalDateString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
+/** createdAt 是 UTC ISO 时间；按本地时区折算到 YYYY-MM，避免月初/月末跨时区错位。 */
+function localMonthOf(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : toLocalDateString(date).slice(0, 7);
+}
+
 /**
  * 组装带文件的表单。
  * `removeFile` 用于「显式移除」：PocketBase 以 `字段名-` 空值表示删除该文件，
@@ -654,9 +678,11 @@ function afterScreenshotUpload(movieId: string, created: CloudRecord): void {
     try {
       const ownerId = getCloudUser()?.id;
       if (!ownerId) return;
+      const filename = stringField(created, 'image');
+      if (!filename) return;
       const token = await getProtectedFileToken();
-      const remoteUrl = pocketbase.files.getURL({ ...created, collectionName: 'screenshots' }, created.id, { token, thumb: SCREENSHOT_THUMB_SIZE });
-      await cacheRemoteMedia(ownerId, `screenshots:${created.id}:${created.id}:${SCREENSHOT_THUMB_SIZE}`, remoteUrl);
+      const remoteUrl = pocketbase.files.getURL({ ...created, collectionName: 'screenshots' }, filename, { token, thumb: SCREENSHOT_THUMB_SIZE });
+      await cacheRemoteMedia(ownerId, `screenshots:${created.id}:${filename}:${SCREENSHOT_THUMB_SIZE}`, remoteUrl);
     } catch {
       // 预热失败不影响上传结果；页面仍会按需加载缩略图。
     }
@@ -688,14 +714,14 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
     if (existingUrl) return existingUrl;
     const localBlob = await getOfflineMedia(ownerId, mediaKey).catch(() => null);
     if (localBlob) {
-      return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(localBlob));
+      return mediaObjectUrlFor(`${ownerId}:${mediaKey}`, localBlob);
     }
     // 截图原图按需保存，以控制本地空间；离线查看灯箱时仍优先给出已同步的缩略图。
     if (field === 'image' && !thumb) {
       const thumbnailKey = `${record.collectionName || 'screenshots'}:${record.id}:${filename}:${SCREENSHOT_THUMB_SIZE}`;
       const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
       if (thumbnailBlob) {
-        return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(thumbnailBlob));
+        return mediaObjectUrlFor(`${ownerId}:${mediaKey}`, thumbnailBlob);
       }
     }
     // 海报原图同样优先使用已同步的缩略图兜底，避免大图加载失败/缓慢时一片空白。
@@ -703,7 +729,7 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
       const thumbnailKey = `${record.collectionName || 'movies'}:${record.id}:${filename}:${POSTER_THUMB_SIZE}`;
       const thumbnailBlob = await getOfflineMedia(ownerId, thumbnailKey).catch(() => null);
       if (thumbnailBlob) {
-        return rememberMediaObjectUrl(`${ownerId}:${mediaKey}`, URL.createObjectURL(thumbnailBlob));
+        return mediaObjectUrlFor(`${ownerId}:${mediaKey}`, thumbnailBlob);
       }
     }
   }
@@ -712,18 +738,50 @@ async function fileUrl(record: CloudRecord, field: string, thumb?: string): Prom
   // 仍可根据字段所属集合稳定生成，避免优化后缩略图退化为空白。
   const collectionName = record.collectionName || (field === 'poster' ? 'movies' : 'screenshots');
   const remoteUrl = pocketbase.files.getURL({ ...record, collectionName }, filename, { token, ...(thumb ? { thumb } : {}) });
-  if (ownerId) void cacheRemoteMedia(ownerId, mediaKey, remoteUrl);
+  if (ownerId) {
+    if (thumb) {
+      // 缩略图直接下载成 Blob 再交给 <img>：只发一次请求，避免
+      // 「cacheRemoteMedia 预取 + <img src=remoteUrl>」重复下载同一张图。
+      const blob = await cacheRemoteMedia(ownerId, mediaKey, remoteUrl);
+      if (blob) return mediaObjectUrlFor(`${ownerId}:${mediaKey}`, blob);
+    } else {
+      // 原图（截图灯箱/海报原图）保持后台缓存，不阻塞大图的渐进显示。
+      void cacheRemoteMedia(ownerId, mediaKey, remoteUrl);
+    }
+  }
   return remoteUrl;
 }
 
-async function cacheRemoteMedia(ownerId: string, mediaKey: string, remoteUrl: string): Promise<void> {
-  try {
-    const response = await fetch(remoteUrl);
-    if (!response.ok) return;
-    await saveOfflineMedia(ownerId, mediaKey, await response.blob());
-  } catch {
-    // 缓存预热失败不应影响当前图片的网络加载。
-  }
+async function cacheRemoteMedia(ownerId: string, mediaKey: string, remoteUrl: string): Promise<Blob | null> {
+  const fetchKey = `${ownerId}:${mediaKey}`;
+  const pending = mediaFetches.get(fetchKey);
+  if (pending) return pending;
+
+  const request = (async (): Promise<Blob | null> => {
+    try {
+      // 不让单张缩略图无限等待：失败后 fileUrl 会退回远程 URL，由 <img> 自己
+      // 继续加载/报错，至少不会让整张卡片永久停在骨架屏。
+      const response = await fetch(remoteUrl, { signal: AbortSignal.timeout(20_000) });
+      if (!response.ok) return null;
+      const blob = await response.blob();
+      // 请求期间可能已登出/切换账号：不要把旧账号的图片写进新账号缓存。
+      if (cacheOwnerId !== ownerId) return null;
+      try {
+        await saveOfflineMedia(ownerId, mediaKey, blob);
+      } catch {
+        // 写缓存失败仍把 Blob 返回给本次展示，不影响图片加载。
+      }
+      return blob;
+    } catch {
+      // 缓存预热失败不应影响当前图片的网络加载。
+      return null;
+    }
+  })().finally(() => {
+    if (mediaFetches.get(fetchKey) === request) mediaFetches.delete(fetchKey);
+  });
+
+  mediaFetches.set(fetchKey, request);
+  return request;
 }
 
 /**
@@ -733,7 +791,8 @@ async function cacheRemoteMedia(ownerId: string, mediaKey: string, remoteUrl: st
  * 有上限、也尊重省流量设置：原先是无条件全量预热，云端有几千张截图时用户只是
  * 打开首页，后台就会跑掉几十上百 MB 下行流量与等量的 IndexedDB 写入。
  */
-const MEDIA_WARM_LIMIT = 200;
+const MEDIA_WARM_POSTER_LIMIT = 24;
+const MEDIA_WARM_SCREENSHOT_LIMIT = 8;
 
 function warmMediaThumbnails(snapshot: Snapshot, ownerId: string): void {
   if (mediaWarmRequest && mediaWarmOwnerId === ownerId) return;
@@ -743,12 +802,17 @@ function warmMediaThumbnails(snapshot: Snapshot, ownerId: string): void {
   if (connection?.saveData) return;
   if (connection?.effectiveType && /^(slow-2g|2g|3g)$/.test(connection.effectiveType)) return;
 
-  const all: Array<{ record: CloudRecord; field: 'poster' | 'image'; thumb: string }> = [
-    ...snapshot.movies.filter((record) => Boolean(stringField(record, 'poster'))).map((record) => ({ record, field: 'poster' as const, thumb: POSTER_THUMB_SIZE })),
-    ...snapshot.screenshots.filter((record) => Boolean(stringField(record, 'image'))).map((record) => ({ record, field: 'image' as const, thumb: SCREENSHOT_THUMB_SIZE })),
+  const posters = snapshot.movies
+    .filter((record) => Boolean(stringField(record, 'poster')))
+    .map((record) => ({ record, field: 'poster' as const, thumb: POSTER_CARD_THUMB_SIZE }));
+  const screenshots = snapshot.screenshots
+    .filter((record) => Boolean(stringField(record, 'image')))
+    .map((record) => ({ record, field: 'image' as const, thumb: SCREENSHOT_THUMB_SIZE }));
+  // 优先保证首页会用到的海报；截图只取少量，避免预热再次把首屏带宽吃满。
+  const jobs = [
+    ...posters.slice(-MEDIA_WARM_POSTER_LIMIT),
+    ...screenshots.slice(-MEDIA_WARM_SCREENSHOT_LIMIT),
   ];
-  // 新的排前面：库比上限大时，优先保证最近添加的内容离线可见
-  const jobs = all.length > MEDIA_WARM_LIMIT ? all.slice(-MEDIA_WARM_LIMIT) : all;
   const request = (async () => {
     const token = await getProtectedFileToken();
     for (let offset = 0; offset < jobs.length; offset += MEDIA_WARM_CONCURRENCY) {
@@ -1405,7 +1469,10 @@ async function buildDashboard(): Promise<StatsDashboard> {
   const genreCount: Record<string, number> = {};
   const countryCount: Record<string, number> = {};
   const ratingCount: Record<number, number> = { 2: 0, 4: 0, 6: 0, 8: 0, 10: 0 };
-  const monthCount: Record<string, number> = {};
+  // 趋势图的「部数」= 当月有观影日记的影视数（同一部剧跨月会出现多次）；
+  // 「新增」则必须按 createdAt 统计，两者不是同一个口径。
+  const activityCountByMonth: Record<string, number> = {};
+  const addedCountByMonth: Record<string, number> = {};
   const ratingValueCount: Record<number, number> = {};
   const statusCounts: Record<WatchStatus, number> = { 想看: 0, 在看: 0, 已看完: 0 };
   const hoursByMonth: Record<string, number> = {};
@@ -1426,15 +1493,28 @@ async function buildDashboard(): Promise<StatsDashboard> {
       const bucket = ratingBucket(record.rating);
       if (bucket) ratingCount[bucket]++;
     }
-    if (movie.status === '已看完') totalMinutes += movie.runtime * (movie.progress?.totalEpisodes || 1);
+
+    const createdMonth = localMonthOf(movie.createdAt);
+    if (createdMonth) addedCountByMonth[createdMonth] = (addedCountByMonth[createdMonth] || 0) + 1;
+
+    const months = new Set(
+      (diariesByMovie.get(movie.id) || [])
+        .map((entry) => entry.watchDate.slice(0, 7))
+        .filter((month) => /^\d{4}-\d{2}$/.test(month)),
+    );
     if (movie.status !== '想看') {
-      // 一部片在同一个月有多条日记时只算一次新增（与趋势图的「部数」口径一致）；
-      // 时长则按同一个月去重后累加，金额上等价于把 totalMinutes 分摊到观影月份里。
-      const months = new Set((diariesByMovie.get(movie.id) || []).map((entry) => entry.watchDate.slice(0, 7)));
-      const minutes = movie.status === '已看完' ? movie.runtime * (movie.progress?.totalEpisodes || 1) : 0;
       for (const month of months) {
-        monthCount[month] = (monthCount[month] || 0) + 1;
-        if (minutes > 0) hoursByMonth[month] = (hoursByMonth[month] || 0) + minutes / 60;
+        activityCountByMonth[month] = (activityCountByMonth[month] || 0) + 1;
+      }
+    }
+    if (movie.status === '已看完') {
+      const minutes = movie.runtime * (movie.progress?.totalEpisodes || 1);
+      totalMinutes += minutes;
+      // 同一部影视的时长只计入它最后一次有记录的那个月。否则一部跨月追完的
+      // 剧集会在每个月都重复加一次「片长 × 总集数」，月度合计大于 totalHours。
+      const latestMonth = [...months].sort().pop();
+      if (latestMonth && minutes > 0) {
+        hoursByMonth[latestMonth] = (hoursByMonth[latestMonth] || 0) + minutes / 60;
       }
     }
   }
@@ -1453,8 +1533,8 @@ async function buildDashboard(): Promise<StatsDashboard> {
       avgPersonalRating: personalCount ? round(personalTotal / personalCount) : null,
       mostWatchedGenre: rankedGenres.slice(0, 2).map(([genre]) => genre),
       statusCounts,
-      addedThisMonth: monthCount[currentMonth] || 0,
-      addedLastMonth: monthCount[previousMonth] || 0,
+      addedThisMonth: addedCountByMonth[currentMonth] || 0,
+      addedLastMonth: addedCountByMonth[previousMonth] || 0,
       hoursThisMonth: round(hoursByMonth[currentMonth] || 0),
       hoursLastMonth: round(hoursByMonth[previousMonth] || 0),
       ratedCount: personalCount,
@@ -1471,9 +1551,10 @@ async function buildDashboard(): Promise<StatsDashboard> {
     diaryRatingDist: [[2, '★ 2分'], [4, '★★ 4分'], [6, '★★★ 6分'], [8, '★★★★ 8分'], [10, '★★★★★ 10分']].map(([stars, label]) => ({ stars: Number(stars), label: String(label), count: ratingCount[Number(stars)] })),
     // 趋势固定给出最近 12 个月的定长序列（缺的月份补 0）：顶部迷你折线要用它保证横轴等距，
     // 下面的折线图直接画这 12 格也比"跳过空月"更符合直觉。
+    // count = 当月有观影日记的影视数（同一部跨月会重复）；hours 只在 completed 月计入一次。
     monthlyTrend: recentMonths.map((month) => ({
       month,
-      count: monthCount[month] || 0,
+      count: activityCountByMonth[month] || 0,
       hours: round(hoursByMonth[month] || 0),
     })),
   };
@@ -1523,6 +1604,15 @@ export const cloudApi = {
       const before = await getMovieDetailRecord(id);
       const previous = toMetadata(before);
       const payload = publicFields(data);
+      // 状态切到「已看完」时补全进度：卡片、详情页、想看清单的同一操作
+      // 必须得到相同数据，否则详情页进度条与统计口径会互相矛盾。
+      if (payload.status === '已看完' && previous.status !== '已看完') {
+        const explicitProgress = payload.progress as Progress | null | undefined;
+        const progress = explicitProgress === null ? null : (explicitProgress ?? previous.progress);
+        if (progress?.totalEpisodes) {
+          payload.progress = { ...progress, episode: progress.totalEpisodes };
+        }
+      }
       const poster = posterFile(data);
       // posterBase64 === null 是「显式移除海报」的信号（MovieForm 的移除按钮），
       // 与 undefined（不改动）区分开，否则移除后保存会静默保留原海报。
@@ -1596,6 +1686,8 @@ export const cloudApi = {
     removeTag: async (id: string, tag: string): Promise<MovieMetadata> => { const movie = await cloudApi.movie.getById(id); return cloudApi.movie.update(id, { tags: movie.tags.filter((item) => item !== tag) }); },
     getAllTags: async (): Promise<string[]> => [...new Set((await summaries()).flatMap((movie) => movie.tags))].sort((a, b) => a.localeCompare(b, 'zh')),
     getPosterUrl: async (id: string, thumb?: boolean): Promise<string | null> => fileUrl(await getMovieRecord(id), 'poster', thumb ? POSTER_THUMB_SIZE : undefined),
+    /** 列表/卡片使用 PB 已预生成的 300x450，避免首屏大量现场缩图。 */
+    getPosterCardUrl: async (id: string): Promise<string | null> => fileUrl(await getMovieRecord(id), 'poster', POSTER_CARD_THUMB_SIZE),
     exportExcel: exportCloudMoviesToExcel,
     listScreenshots: async (movieId: string): Promise<ScreenshotInfo[]> => (await getScreenshotsForMovie(movieId)).map((record) => ({ filename: record.id, createdAt: stringField(record, 'created') || undefined, episode: typeof record.episode === 'number' ? record.episode : undefined, hours: typeof record.hours === 'number' ? record.hours : undefined, minutes: typeof record.minutes === 'number' ? record.minutes : undefined, seconds: typeof record.seconds === 'number' ? record.seconds : undefined })),
     addScreenshot: async (movieId: string, base64: string, _ext: string): Promise<ScreenshotInfo[]> => {

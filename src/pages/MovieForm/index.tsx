@@ -6,6 +6,7 @@ import { parseSegmentText, segmentText } from '@/lib/segmentGroups';
 import type { MediaType, ProgressSegment, WatchStatus, Progress, TmdbSearchResult } from '@shared/types/index';
 import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
+import ErrorState from '@/components/common/ErrorState';
 import CustomSelect from '@/components/common/CustomSelect';
 import CustomDatePicker from '@/components/common/CustomDatePicker';
 import AppIcon from '@/components/common/AppIcon';
@@ -50,6 +51,29 @@ const EMPTY_FORM = {
   progress: null as Progress | null,
 };
 
+/**
+ * 脏检查快照。新建和编辑共用同一份字段清单，避免两处 JSON.stringify
+ * 字段顺序/内容不一致导致 hasChanges 永远为 true/false。
+ */
+function formSnapshot(form: typeof EMPTY_FORM): string {
+  return JSON.stringify({
+    title: form.title,
+    titleOriginal: form.titleOriginal,
+    mediaType: form.mediaType,
+    director: form.director,
+    cast: form.cast,
+    releaseDate: form.releaseDate,
+    country: form.country,
+    genre: form.genre,
+    tags: form.tags,
+    runtime: form.runtime,
+    synopsis: form.synopsis,
+    rating: form.rating,
+    status: form.status,
+    progress: form.progress,
+  });
+}
+
 export default function MovieForm() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -68,7 +92,10 @@ export default function MovieForm() {
   /** 综艺进度条目正在输入的那一格（原文，避免解析结果在打字途中改写输入框）。 */
   const [segmentDraft, setSegmentDraft] = useState<{ index: number; text: string } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [initialForm, setInitialForm] = useState<string>('');
+  const [initialForm, setInitialForm] = useState<string>(() => formSnapshot(EMPTY_FORM));
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [tmdbQuery, setTmdbQuery] = useState('');
   const [tmdbResults, setTmdbResults] = useState<TmdbSearchResult[]>([]);
   const [tmdbSearching, setTmdbSearching] = useState(false);
@@ -79,12 +106,30 @@ export default function MovieForm() {
   const [tmdbPosterRetrying, setTmdbPosterRetrying] = useState(false);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      // 从编辑页切到新建页时，同一个 MovieForm 实例可能被复用；必须清掉上一部
+      // 影视的字段和海报，避免新建表单里预填着上一条记录。
+      setForm({ ...EMPTY_FORM });
+      setInitialForm(formSnapshot(EMPTY_FORM));
+      setPosterBase64(undefined);
+      setPosterRemoved(false);
+      setPosterPreview(null);
+      setExistingPosterUrl(null);
+      setLoading(false);
+      setLoadError(false);
+      return;
+    }
     setLoading(true);
+    setLoadError(false);
+    // 编辑另一部影视时同样先清掉旧海报，避免预览串到新记录上。
+    setPosterBase64(undefined);
+    setPosterRemoved(false);
+    setPosterPreview(null);
+    setExistingPosterUrl(null);
     (async () => {
       try {
         const movie = await api.movie.getById(id);
-        setForm({
+        const loadedForm = {
           title: movie.title,
           titleOriginal: movie.titleOriginal || '',
           mediaType: movie.mediaType,
@@ -99,40 +144,29 @@ export default function MovieForm() {
           rating: movie.rating,
           status: movie.status,
           progress: movie.progress,
-        });
+        };
+        setForm(loadedForm);
         if (movie.posterPath) {
-          const url = await api.movie.getPosterUrl(id);
-          if (url) setExistingPosterUrl(url);
+          // 海报只是表单的辅助预览；token/网络失败不能把整个编辑页踢回首页。
+          try {
+            const url = await api.movie.getPosterUrl(id);
+            if (url) setExistingPosterUrl(url);
+          } catch (err) {
+            console.warn('[movie-form] 海报预览加载失败，继续编辑表单', err);
+          }
         }
-        setInitialForm(JSON.stringify({
-          title: movie.title, titleOriginal: movie.titleOriginal || '',
-          mediaType: movie.mediaType, director: movie.director,
-          cast: (movie.cast || []).join('、'),
-          releaseDate: movie.releaseDate, country: movie.country,
-          genre: movie.genre, tags: movie.tags, runtime: movie.runtime,
-          synopsis: movie.synopsis || '', rating: movie.rating,
-          status: movie.status, progress: movie.progress,
-        }));
+        setInitialForm(formSnapshot(loadedForm));
       } catch (err: any) {
-        showErrorToast(err.message || '加载失败');
-        navigate('/');
+        console.error(err);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
     })();
-  }, [id]);
+  }, [id, reloadKey]);
 
   const hasChanges = useMemo(() => {
-    if (!initialForm) return false;
-    const current = JSON.stringify({
-      title: form.title, titleOriginal: form.titleOriginal,
-      mediaType: form.mediaType, director: form.director,
-      cast: form.cast,
-      releaseDate: form.releaseDate, country: form.country,
-      genre: form.genre, tags: form.tags, runtime: form.runtime,
-      synopsis: form.synopsis, rating: form.rating,
-      status: form.status, progress: form.progress,
-    });
+    const current = formSnapshot(form);
     return current !== initialForm || posterBase64 !== undefined || posterRemoved;
   }, [form, initialForm, posterBase64, posterRemoved]);
 
@@ -334,7 +368,9 @@ export default function MovieForm() {
   }
 
   async function handleSave() {
+    if (saving) return;
     if (!form.title.trim()) { showToast('标题不能为空'); return; }
+    setSaving(true);
     try {
       const movieData = {
         ...form,
@@ -354,6 +390,8 @@ export default function MovieForm() {
       }
     } catch (err: any) {
       showErrorToast(err.message || '保存失败');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -362,6 +400,18 @@ export default function MovieForm() {
       <div>
         <Header title={isEditing ? '编辑影视' : '添加影视'} subtitle="加载中..." showAdd={false} />
         <div className="text-text-muted text-sm py-20 text-center">加载中...</div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div>
+        <Header title={isEditing ? '编辑影视' : '添加影视'} subtitle="加载失败" showAdd={false} />
+        <ErrorState
+          description="无法加载这部影视的资料。请检查网络或登录状态后重试。"
+          onRetry={() => setReloadKey((key) => key + 1)}
+        />
       </div>
     );
   }
@@ -705,7 +755,7 @@ export default function MovieForm() {
           {/* 操作 — sticky 底部栏 */}
           <div className="form-actions-bar">
             <button type="button" onClick={handleGoBack} className="btn btn-ghost">取消</button>
-            <button type="button" onClick={handleSave} className="btn btn-primary">{isEditing ? '保存修改' : '保存'}</button>
+            <button type="button" onClick={handleSave} className="btn btn-primary" disabled={saving}>{saving ? '保存中…' : isEditing ? '保存修改' : '保存'}</button>
           </div>
         </div>
       </div>

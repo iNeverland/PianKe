@@ -7,6 +7,58 @@ routerAdd('POST', '/api/pianke/auth/send-register-code', (e) => {
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailPattern.test(email)) return e.json(400, { message: '请输入有效的邮箱地址' });
 
+  // IP 维度发送节流：验证码记录只存 IP 哈希，1 小时最多 10 次。
+  // 每个路由回调都在独立 VM 中执行，所以这段逻辑必须在回调内自包含。
+  let ip = '';
+  try {
+    // 反代会把真实客户端 IP 追加到 X-Forwarded-For 末尾；取最后一段可以避免
+    // 客户端伪造最前面的值绕过限流。PocketBase 默认只监听回环地址。
+    const headers = e.requestInfo().headers || {};
+    const forwarded = String(headers['x-forwarded-for'] || headers['X-Forwarded-For'] || headers['x-real-ip'] || '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    ip = forwarded[forwarded.length - 1] || '';
+  } catch (_) { /* 交给下面的 realIP 兜底 */ }
+  if (!ip) {
+    try { ip = String(e.realIP() || ''); } catch (_) { /* 保持 unknown */ }
+  }
+  const ipHash = $security.sha256(ip || 'unknown');
+  // PocketBase 的日期过滤器使用 "YYYY-MM-DD HH:mm:ss.sssZ"（空格分隔），
+  // 不能直接传 toISOString() 的 T 形式，否则同一天的时间比较会失效。
+  const ipCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ');
+  let recentFromIp = [];
+  try {
+    recentFromIp = $app.findRecordsByFilter(
+      'email_verification_codes',
+      'requestIpHash = {:ipHash} && created >= {:cutoff}',
+      '-created',
+      20,
+      0,
+      { ipHash, cutoff: ipCutoff },
+    );
+  } catch (_) {
+    // 迁移尚未执行/字段缺失时不让整个验证码流程不可用。
+  }
+  if (recentFromIp.length >= 10) {
+    return e.json(429, { message: '请求过于频繁，请稍后再试' });
+  }
+
+  // 顺手清理 24 小时前的过期验证码，避免记录表无限增长。
+  try {
+    const stale = $app.findRecordsByFilter(
+      'email_verification_codes',
+      'expiresAt < {:cutoff}',
+      '',
+      50,
+      0,
+      { cutoff: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().replace('T', ' ') },
+    );
+    for (const staleRecord of stale) {
+      try { $app.delete(staleRecord); } catch (_) { /* 单条失败不影响发码 */ }
+    }
+  } catch (_) { /* 清理失败不阻塞发送 */ }
+
   try {
     $app.findFirstRecordByFilter('users', 'email = {:email}', { email });
     return e.json(409, { message: '该邮箱已注册，请直接登录' });
@@ -33,6 +85,7 @@ routerAdd('POST', '/api/pianke/auth/send-register-code', (e) => {
   record.set('purpose', 'register');
   record.set('codeHash', $security.sha256(code));
   record.set('expiresAt', new Date(Date.now() + 10 * 60 * 1000).toISOString());
+  record.set('requestIpHash', ipHash);
   // PocketBase 的必填 number 字段将 0 视作空值，因此从 1 开始计数；
   // 下方以 >= 6 锁定，仍然只允许 5 次错误尝试。
   record.set('attempts', 1);
@@ -105,6 +158,41 @@ routerAdd('POST', '/api/pianke/auth/register', (e) => {
 
 routerAdd('POST', '/api/pianke/auth/send-password-code', (e) => {
   const email = e.auth.getString('email');
+
+  // 与注册发码同一套 IP 节流；回调自包含。
+  let ip = '';
+  try {
+    // 反代会把真实客户端 IP 追加到 X-Forwarded-For 末尾；取最后一段可以避免
+    // 客户端伪造最前面的值绕过限流。PocketBase 默认只监听回环地址。
+    const headers = e.requestInfo().headers || {};
+    const forwarded = String(headers['x-forwarded-for'] || headers['X-Forwarded-For'] || headers['x-real-ip'] || '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    ip = forwarded[forwarded.length - 1] || '';
+  } catch (_) { /* 交给下面的 realIP 兜底 */ }
+  if (!ip) {
+    try { ip = String(e.realIP() || ''); } catch (_) { /* 保持 unknown */ }
+  }
+  const ipHash = $security.sha256(ip || 'unknown');
+  // PocketBase 的日期过滤器使用 "YYYY-MM-DD HH:mm:ss.sssZ"（空格分隔），
+  // 不能直接传 toISOString() 的 T 形式，否则同一天的时间比较会失效。
+  const ipCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ');
+  let recentFromIp = [];
+  try {
+    recentFromIp = $app.findRecordsByFilter(
+      'email_verification_codes',
+      'requestIpHash = {:ipHash} && created >= {:cutoff}',
+      '-created',
+      20,
+      0,
+      { ipHash, cutoff: ipCutoff },
+    );
+  } catch (_) { /* 迁移未执行时不阻塞 */ }
+  if (recentFromIp.length >= 10) {
+    return e.json(429, { message: '请求过于频繁，请稍后再试' });
+  }
+
   const latest = $app.findRecordsByFilter(
     'email_verification_codes',
     'email = {:email} && purpose = {:purpose}',
@@ -124,6 +212,7 @@ routerAdd('POST', '/api/pianke/auth/send-password-code', (e) => {
   record.set('purpose', 'change_password');
   record.set('codeHash', $security.sha256(code));
   record.set('expiresAt', new Date(Date.now() + 10 * 60 * 1000).toISOString());
+  record.set('requestIpHash', ipHash);
   // PocketBase 的必填 number 字段将 0 视作空值，因此从 1 开始计数；
   // 下方以 >= 6 锁定，仍然只允许 5 次错误尝试。
   record.set('attempts', 1);
@@ -154,6 +243,40 @@ routerAdd('POST', '/api/pianke/auth/send-password-reset-code', (e) => {
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailPattern.test(email)) return e.json(400, { message: '请输入有效的邮箱地址' });
 
+  // 重置密码同样按 IP 节流；响应保持与“邮箱不存在”一致，避免枚举。
+  let ip = '';
+  try {
+    // 反代会把真实客户端 IP 追加到 X-Forwarded-For 末尾；取最后一段可以避免
+    // 客户端伪造最前面的值绕过限流。PocketBase 默认只监听回环地址。
+    const headers = e.requestInfo().headers || {};
+    const forwarded = String(headers['x-forwarded-for'] || headers['X-Forwarded-For'] || headers['x-real-ip'] || '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+    ip = forwarded[forwarded.length - 1] || '';
+  } catch (_) { /* 交给下面的 realIP 兜底 */ }
+  if (!ip) {
+    try { ip = String(e.realIP() || ''); } catch (_) { /* 保持 unknown */ }
+  }
+  const ipHash = $security.sha256(ip || 'unknown');
+  // PocketBase 的日期过滤器使用 "YYYY-MM-DD HH:mm:ss.sssZ"（空格分隔），
+  // 不能直接传 toISOString() 的 T 形式，否则同一天的时间比较会失效。
+  const ipCutoff = new Date(Date.now() - 60 * 60 * 1000).toISOString().replace('T', ' ');
+  let recentFromIp = [];
+  try {
+    recentFromIp = $app.findRecordsByFilter(
+      'email_verification_codes',
+      'requestIpHash = {:ipHash} && created >= {:cutoff}',
+      '-created',
+      20,
+      0,
+      { ipHash, cutoff: ipCutoff },
+    );
+  } catch (_) { /* 迁移未执行时不阻塞 */ }
+  if (recentFromIp.length >= 10) {
+    return e.json(200, { message: '如该邮箱已注册，验证码将发送至邮箱' });
+  }
+
   let user;
   try {
     user = $app.findFirstRecordByFilter('users', 'email = {:email}', { email });
@@ -181,6 +304,7 @@ routerAdd('POST', '/api/pianke/auth/send-password-reset-code', (e) => {
   record.set('purpose', 'reset_password');
   record.set('codeHash', $security.sha256(code));
   record.set('expiresAt', new Date(Date.now() + 10 * 60 * 1000).toISOString());
+  record.set('requestIpHash', ipHash);
   record.set('attempts', 1);
   $app.save(record);
 

@@ -33,5 +33,9 @@ export function parseLocalDate(day: string): Date | null {
   if (!Number.isInteger(y) || !Number.isInteger(m) || !Number.isInteger(d)) return null;
   if (m < 1 || m > 12 || d < 1 || d > 31) return null;
   const date = new Date(y, m - 1, d);
-  return Number.isNaN(date.getTime()) ? null : date;
+  if (Number.isNaN(date.getTime())) return null;
+  // Date 会把 2026-02-31 自动进位成 2026-03-03；回读三个字段确认没有被改写，
+  // 否则非法 watchDate 会得到错误但“看似正常”的星期/月份分组。
+  if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d) return null;
+  return date;
 }

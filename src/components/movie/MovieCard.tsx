@@ -7,6 +7,7 @@ import type { ContextMenuItem } from '@/components/common/ContextMenu';
 import Modal from '@/components/common/Modal';
 import { showErrorToast, showToast } from '@/components/common/Toast';
 import AppIcon from '@/components/common/AppIcon';
+import { useInView } from '@/hooks/useInView';
 
 interface MovieCardProps {
   movie: MovieSummary;
@@ -25,19 +26,47 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
   const status = statusConfig[movie.status];
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [posterLoading, setPosterLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // 卡片接近视口后才解析/下载海报，避免首页一次性为几十张卡片发请求。
+  const { ref: cardRef, inView } = useInView<HTMLButtonElement>();
+  const posterImgRef = useRef<HTMLImageElement | null>(null);
 
   useEffect(() => {
-    if (movie.posterThumbPath) {
-      api.movie.getPosterUrl(movie.id, true).then(setPosterUrl).catch(() => {});
+    let active = true;
+    setPosterUrl(null);
+    setImgLoaded(false);
+    if (!inView || !movie.posterThumbPath) {
+      setPosterLoading(false);
+      return () => { active = false; };
     }
-  }, [movie.id, movie.posterThumbPath]);
+    setPosterLoading(true);
+    api.movie.getPosterCardUrl(movie.id)
+      .then((url) => {
+        if (!active) return;
+        setPosterLoading(false);
+        if (!url) return;
+        setPosterUrl(url);
+        setImgLoaded(false);
+      })
+      .catch(() => {
+        if (active) setPosterLoading(false);
+      });
+    return () => { active = false; };
+  }, [inView, movie.id, movie.posterThumbPath]);
+
+  // blob URL 可能已经解码完成，早于 onLoad 监听；用 img.complete 兜底，
+  // 避免缓存命中时图片一直停在 opacity:0 的骨架屏状态。
+  useEffect(() => {
+    if (posterUrl && posterImgRef.current?.complete) setImgLoaded(true);
+  }, [posterUrl]);
 
   const handleImgLoad = useCallback(() => setImgLoaded(true), []);
   const handleImgError = useCallback(() => {
     // 海报 URL 失效/离线时回退到占位图标，避免骨架屏与评分/状态徽标永久隐藏。
     setImgLoaded(true);
+    setPosterLoading(false);
     setPosterUrl(null);
   }, []);
 
@@ -74,12 +103,9 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
 
   async function handleStatusChange(status: '在看' | '已看完' | '想看') {
     try {
-      const full = await api.movie.getById(movie.id);
-      await api.movie.update(movie.id, {
-        ...full,
-        status,
-        progress: full.progress,
-      });
+      // 只提交 status：进度补全和状态日记由 cloudApi.movie.update 统一处理。
+      // 不再先 getById 再 spread 整份快照，既省一次往返，也避免覆盖并发修改。
+      await api.movie.update(movie.id, { status });
       showToast(`状态已更新为「${statusConfig[status]?.label || status}」`);
       onStatusChange?.();
     } catch (err: any) {
@@ -111,9 +137,12 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
     { label: '删除', onClick: handleDelete, danger: true },
   ];
 
+  const posterPending = posterLoading || Boolean(posterUrl && !imgLoaded);
+
   return (
     <>
       <button
+        ref={cardRef}
         onClick={() => navigate(`/movie/${movie.id}`)}
         onContextMenu={handleContextMenu}
         onKeyDown={handleCardKeyDown}
@@ -126,12 +155,13 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
         className="movie-card"
       >
         <div className="movie-poster">
-          {/* Skeleton placeholder — shown until image loads */}
-          {posterUrl && !imgLoaded && (
+          {/* Skeleton placeholder — shown while URL is resolving or image is loading */}
+          {posterPending && (
             <div className="absolute inset-0 skeleton-shimmer z-10" />
           )}
           {posterUrl ? (
             <img
+              ref={posterImgRef}
               src={posterUrl}
               alt=""
               loading="lazy"
@@ -148,13 +178,13 @@ export default function MovieCard({ movie, onStatusChange, onDelete }: MovieCard
           )}
 
           {/* Top-right rating badge */}
-          <div className="poster-rating" style={posterUrl && !imgLoaded ? { opacity: 0 } : undefined}>
+          <div className="poster-rating" style={posterPending ? { opacity: 0 } : undefined}>
             {movie.rating.toFixed(1)}
           </div>
 
           {/* Top-left status badge */}
           {status && (
-            <span className={`poster-status ${status.cls}`} style={posterUrl && !imgLoaded ? { opacity: 0 } : undefined}>
+            <span className={`poster-status ${status.cls}`} style={posterPending ? { opacity: 0 } : undefined}>
               {status.label}
             </span>
           )}

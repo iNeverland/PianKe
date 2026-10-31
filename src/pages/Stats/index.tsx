@@ -6,6 +6,7 @@ import type {
   StatsMonthlyTrend,
 } from '@shared/types/index';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
+import ErrorState from '@/components/common/ErrorState';
 import Header from '@/components/layout/Header';
 import AppIcon from '@/components/common/AppIcon';
 import {
@@ -199,11 +200,17 @@ export default function Stats() {
   const [diaryRatingDist, setDiaryRatingDist] = useState<{ stars: number; label: string; count: number }[]>([]);
   const [monthlyTrend, setMonthlyTrend] = useState<StatsMonthlyTrend[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
     (async () => {
       try {
         const dashboard = await api.stats.dashboard();
+        if (!active) return;
         setOverview(dashboard.overview);
         setByType(dashboard.byType);
         setByGenre(dashboard.byGenre);
@@ -212,11 +219,13 @@ export default function Stats() {
         setMonthlyTrend(dashboard.monthlyTrend);
       } catch (err) {
         console.error(err);
+        if (active) setLoadError(true);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     })();
-  }, []);
+    return () => { active = false; };
+  }, [reloadKey]);
 
   const theme = useChartTheme();
   const topGenres = byGenre;
@@ -448,6 +457,18 @@ export default function Stats() {
       <div>
         <Header title="数据统计" subtitle="加载中..." showAdd={false} />
         <LoadingSkeleton rows={6} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div>
+        <Header title="数据统计" subtitle="加载失败" showAdd={false} />
+        <ErrorState
+          description="无法加载统计数据。请检查网络或登录状态后重试。"
+          onRetry={() => setReloadKey((key) => key + 1)}
+        />
       </div>
     );
   }

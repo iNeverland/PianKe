@@ -60,7 +60,10 @@ let config;
 let source;
 
 if (envUrl) {
-  config = { url: envUrl, appToken: envToken };
+  // 只给了 URL 时沿用本地未跟踪副本里的 token，避免把已有配置覆盖成空口令；
+  // 发布构建若两者都没有 token，下面的 --require 检查会直接失败。
+  const existingToken = envToken ? '' : (readExisting()?.appToken || '');
+  config = { url: envUrl, appToken: envToken || existingToken };
   source = '环境变量 PIANKE_TMDB_PROXY_URL / PIANKE_TMDB_PROXY_TOKEN';
 } else {
   const existing = readExisting();
@@ -88,6 +91,15 @@ if (!config) {
   writeConfig({ url: '', appToken: '' });
   console.warn('⚠ 未提供 TMDB 代理配置，已写入占位文件；本构建的 TMDB 导入功能不可用。');
   process.exit(0);
+}
+
+if (requireConfig && !config.appToken) {
+  fail([
+    '发布构建缺少 PIANKE_TMDB_PROXY_TOKEN。',
+    '服务端启用了 x-app-token 时，客户端没有口令的包会在运行时持续 401；',
+    '请把 PIANKE_TMDB_PROXY_TOKEN 配成与服务器 .env 的 APP_TOKEN 一致的值。',
+    '（如果确实要构建无鉴权的代理客户端，请去掉 --require 并显式承担风险。）',
+  ].join('\n'));
 }
 
 if (!/^https?:\/\//i.test(config.url)) {

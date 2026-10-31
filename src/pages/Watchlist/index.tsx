@@ -4,6 +4,7 @@ import api from '@/lib/api';
 import type { MovieSummary } from '@shared/types/index';
 import { getLocalDateStr } from '@shared/utils/date';
 import EmptyState from '@/components/common/EmptyState';
+import ErrorState from '@/components/common/ErrorState';
 import PosterThumb from '@/components/common/PosterThumb';
 import { showErrorToast, showToast } from '@/components/common/Toast';
 import Header from '@/components/layout/Header';
@@ -12,17 +13,21 @@ export default function Watchlist() {
   const navigate = useNavigate();
   const [movies, setMovies] = useState<MovieSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     loadWatchlist();
   }, []);
 
   async function loadWatchlist() {
+    setLoading(true);
+    setLoadError(false);
     try {
       const data = await api.watchlist.list();
       setMovies(data);
     } catch (err) {
       console.error(err);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -67,6 +72,16 @@ export default function Watchlist() {
     <div>
       <Header title="想看清单" subtitle="加载中..." showAdd={false} />
       <div className="text-text-muted text-sm py-10">加载中...</div>
+    </div>
+  );
+
+  if (loadError) return (
+    <div>
+      <Header title="想看清单" subtitle="加载失败" showAdd={false} />
+      <ErrorState
+        description="无法加载想看清单。请检查网络或登录状态后重试。"
+        onRetry={() => { void loadWatchlist(); }}
+      />
     </div>
   );
 

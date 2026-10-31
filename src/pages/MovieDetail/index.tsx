@@ -11,6 +11,8 @@ import Modal from '@/components/common/Modal';
 
 import { showErrorToast, showToast, showToastWithAction } from '@/components/common/Toast';
 import LoadingSkeleton from '@/components/common/LoadingSkeleton';
+import ErrorState from '@/components/common/ErrorState';
+import Header from '@/components/layout/Header';
 import ScreenshotImage from '@/components/common/ScreenshotImage';
 import ScreenshotThumbnail from '@/components/common/ScreenshotThumbnail';
 import FinishWatchingModal, { type FinishWatchingData } from '@/components/movie/FinishWatchingModal';
@@ -29,6 +31,7 @@ export default function MovieDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [movie, setMovie] = useState<MovieMetadata | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [entries, setEntries] = useState<WatchRecord[]>([]);
   const [diaryEntries, setDiaryEntries] = useState<DiaryEntry[]>([]);
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
@@ -40,6 +43,10 @@ export default function MovieDetail() {
   const [localSegs, setLocalSegs] = useState<ProgressSegment[] | null>(null);
   const localSegsRef = useRef(localSegs);
   localSegsRef.current = localSegs;
+  // 分段写入串行化：连续改名/删除时，保证服务端最终状态是最后一次编辑，
+  // 而不是最后返回的那个响应。
+  const segmentsWriteChain = useRef<Promise<void>>(Promise.resolve());
+  const segmentsWriteSeq = useRef(0);
   /** 正在改名（点铅笔）的分段下标；为 null 时一律显示为可点击的方块。 */
   const [editingSegment, setEditingSegment] = useState<number | null>(null);
   /** 正在编辑期数的分组（draft 为输入中的字符串，提交时才写回）。 */
@@ -212,6 +219,7 @@ export default function MovieDetail() {
 
   async function loadMovie(isActive: () => boolean = () => true) {
     if (!id) return;
+    setLoadError(false);
     try {
       // 首屏只依赖影片本身；日记、追剧记录和截图在下方独立补齐，避免其中一项
       // 网络慢或失败时让整个详情页持续骨架屏。
@@ -241,7 +249,10 @@ export default function MovieDetail() {
         if (shots.status === 'fulfilled') setScreenshots(shots.value);
       });
     } catch (err: any) {
-      if (isActive()) showErrorToast(err.message || '加载失败');
+      if (isActive()) {
+        setLoadError(true);
+        showErrorToast(err.message || '加载失败');
+      }
     }
   }
 
@@ -405,11 +416,9 @@ export default function MovieDetail() {
   async function handleStatusChange(status: '在看' | '已看完' | '想看') {
     if (!id || !movie) return;
     try {
-      const updated = await api.movie.update(id, {
-        ...movie,
-        status,
-        progress: movie.progress,
-      });
+      // 只发送 status：进度补全与状态日记统一由 cloudApi.movie.update 处理，
+      // 避免把整份 movie 快照回写造成其它并发修改丢失。
+      const updated = await api.movie.update(id, { status });
       setMovie(updated);
       void refreshDiary();
       showToast(`状态已更新为「${status}」`);
@@ -529,6 +538,17 @@ export default function MovieDetail() {
   }, [entries]);
 
   if (!movie) {
+    if (loadError) {
+      return (
+        <div>
+          <Header title="影视详情" subtitle="加载失败" showAdd={false} />
+          <ErrorState
+            description="无法加载这部影视的详情。请检查网络或登录状态后重试。"
+            onRetry={() => { void loadMovie(); }}
+          />
+        </div>
+      );
+    }
     return <LoadingSkeleton rows={5} />;
   }
 
@@ -917,25 +937,43 @@ export default function MovieDetail() {
         const filled = segs.filter(s => s.label.trim()).length;
         const groups = groupSegments(segs);
         const commitSegs = (newSegs: ProgressSegment[]) => {
+          // 同步更新 ref：用户在上一次 render 之前连续点两次时，第二次也能
+          // 基于最新值计算，而不是拿到旧闭包。
+          localSegsRef.current = newSegs;
           setLocalSegs(newSegs);
           // 回滚目标是「最后一次被服务端确认的状态」，而不是调用前的本地状态：
           // 编辑分段名时 onChange 已经乐观改过本地值，拿本地值回滚会回滚到半成品。
           const confirmed = (movie.progress?.segments ?? []).map((segment) => ({ ...segment }));
-          void (async () => {
-            try {
-              const updated = await api.movie.update(id!, {
-                ...movie,
-                progress: { ...movie.progress!, segments: newSegs, episode: newSegs.filter(s => s.label.trim()).length, totalEpisodes: newSegs.length },
-              });
-              setMovie(updated);
-              void refreshDiary();
-            } catch (err) {
-              // 必须回滚并告知：否则界面显示已保存、云端并没有，
-              // 用户下次打开才发现整期进度丢了（原先这里是 void 掉的未处理拒绝）。
-              setLocalSegs(confirmed);
-              showErrorToast((err as Error).message || '进度保存失败，请重试');
-            }
-          })();
+          const requestId = ++segmentsWriteSeq.current;
+          // 串行化写入：后一次请求一定等前一次完成后再发；只把最新一次响应
+          // 应用到界面，避免较旧的响应后到、把刚编辑的分段覆盖回去。
+          const write = segmentsWriteChain.current
+            .catch(() => undefined)
+            .then(async () => {
+              try {
+                // 只提交 progress：不要 spread 整个 movie 快照，否则会用旧数据
+                // 覆盖其它字段（例如并发修改的状态、海报等）。
+                const updated = await api.movie.update(id!, {
+                  progress: {
+                    episode: newSegs.filter((segment) => segment.label.trim()).length,
+                    totalEpisodes: newSegs.length,
+                    segments: newSegs,
+                  },
+                });
+                if (requestId === segmentsWriteSeq.current) {
+                  setMovie(updated);
+                  void refreshDiary();
+                }
+              } catch (err) {
+                if (requestId !== segmentsWriteSeq.current) return;
+                // 失败时以服务端最后一次确认的状态为准；取不到再退回本地旧值。
+                const latest = await api.movie.getById(id!).catch(() => null);
+                if (latest) setMovie(latest);
+                else setLocalSegs(confirmed);
+                showErrorToast((err as Error).message || '进度保存失败，请重试');
+              }
+            });
+          segmentsWriteChain.current = write;
         };
         // 新增分段插在所属期的末尾、并继承该期的期号，所以只填「下」「加更上」也不会丢期号。
         const insertAfter = (index: number) => {
@@ -953,8 +991,11 @@ export default function MovieDetail() {
          * 初始显示为已看——这是已知代价，想要“已排期但未看”需要再引入 watched 字段。
          */
         const appendNextPeriod = () => {
-          const segment = nextPeriodSegment(segs);
-          setLocalSegs([...segs, segment]);
+          const current = localSegsRef.current ?? segs;
+          const segment = nextPeriodSegment(current);
+          // 必须走 commitSegs：只改 localSegs 的话界面显示“已添加”，
+          // 但刷新/离开页面后这一期就丢了。
+          commitSegs([...current, segment]);
           showToast(`已添加「${segment.period}${segment.label}」，标题与方块都可点击改名`);
         };
 
